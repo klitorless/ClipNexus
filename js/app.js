@@ -128,6 +128,9 @@ async function handleFileSelected(event) {
 // ---------- Startup ----------
 
 function init() {
+    // Modules loaded successfully, so remove the load warning.
+    document.getElementById("load-check")?.remove();
+
     renderSidebar(elements.sidebar);
 
     elements.uploadButton.addEventListener("click", () => elements.fileInput.click());

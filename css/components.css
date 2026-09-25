@@ -160,3 +160,14 @@
 .tag-danger {
     color: var(--danger);
 }
+
+/* ---------- Load check (visible only if app.js fails) ---------- */
+
+.load-check {
+    border: 1px solid var(--danger);
+    border-radius: var(--radius);
+    padding: var(--space-4);
+    margin-bottom: var(--space-4);
+    color: var(--text);
+    font-size: var(--text-sm);
+}

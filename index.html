@@ -40,6 +40,15 @@
 
         <!-- Main content area -->
         <main class="app-main">
+            <!-- Load check: removed by js/app.js once modules run.
+                 If you can read this, css/ or js/ did not load. -->
+            <div id="load-check" class="load-check" role="alert">
+                <p><strong>App files did not load.</strong></p>
+                <p>The css/ and js/ folders must sit next to index.html,
+                   and the page must be opened through a local server
+                   (http://...), not as a single file (file:// or content://).</p>
+            </div>
+
             <h1 id="page-title" class="page-title">Dashboard</h1>
             <section id="content-mount" class="content" aria-live="polite"></section>
         </main>
