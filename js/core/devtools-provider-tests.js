@@ -117,28 +117,32 @@ export function addProviderTests(add) {
 
     // ---------- Contract ----------
 
-    add("contract: default providers conform and are honest placeholders", () => {
+    // Stage 2B update: Supadata is now implemented; the other stays a placeholder.
+    add("contract: default providers conform and report status honestly", () => {
         const transcriptProviders = createDefaultProviderRegistry();
         const ids = transcriptProviders.list().map((item) => item.id);
+        const expected = { "supadata": PROVIDER_STATUS.AVAILABLE, "youtube-transcript-api": PROVIDER_STATUS.NOT_IMPLEMENTED };
         return ids.includes("supadata") && ids.includes("youtube-transcript-api") &&
             ids.every((id) => {
                 const { provider } = transcriptProviders.get(id);
                 return isValidProvider(provider) && Object.isFrozen(provider) &&
-                    provider.status === PROVIDER_STATUS.NOT_IMPLEMENTED &&
+                    provider.status === expected[id] &&
                     typeof provider.capabilities.nativeCaptions === "boolean" &&
                     typeof provider.capabilities.generatedTranscript === "boolean" &&
                     typeof provider.capabilities.languageSelection === "boolean";
             });
     });
 
+    // Stage 2B update: only NOT_IMPLEMENTED providers are called here (the real
+    // one would make a network request; it is tested with a fake fetch instead).
     add("contract: placeholder adapters return structured NOT_IMPLEMENTED", async () => {
         const project = projectFor(`https://youtu.be/${videoId}`);
         const transcriptProviders = createDefaultProviderRegistry();
-        const results = await Promise.all(transcriptProviders.list().map((item) =>
-            acquire(transcriptProviders, item.id, project)));
-        return results.every((result, index) =>
+        const placeholders = transcriptProviders.list().filter((item) => item.status === PROVIDER_STATUS.NOT_IMPLEMENTED);
+        const results = await Promise.all(placeholders.map((item) => acquire(transcriptProviders, item.id, project)));
+        return placeholders.length >= 1 && results.every((result, index) =>
             result.success === false && result.error.code === "NOT_IMPLEMENTED" &&
-            result.error.retryable === false && result.error.providerId === transcriptProviders.list()[index].id &&
+            result.error.retryable === false && result.error.providerId === placeholders[index].id &&
             Object.isFrozen(result));
     });
 
@@ -460,12 +464,14 @@ export function addProviderTests(add) {
             hasNoUnsafeElements(mount);
     });
 
-    add("dashboard: status card describes Stage 2A honestly", () => {
+    // Stage 2B update: 2A is now listed as completed; 2B is current.
+    add("dashboard: status card describes Stage 2B honestly (2A completed)", () => {
         const stubState = { get: (key) => (key === "ui" ? {} : null) };
         const mount = renderDetached((element) =>
             renderDashboard(element, stubState, { onVideoUrlSubmit: () => ({ ok: true, message: "" }) }));
         const text = mount.textContent;
-        return text.includes("Stage 2A — Transcript Acquisition Architecture") &&
-            text.includes("no transcript is retrieved from the internet yet");
+        return text.includes("Stage 2B — First Real Transcript Provider") &&
+            text.includes("Completed:") && text.includes("Stage 2A — Transcript Acquisition Architecture") &&
+            text.includes("your own API key") && text.includes("Not built yet") && text.includes("AI analysis");
     });
 }

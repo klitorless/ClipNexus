@@ -6,8 +6,15 @@
 // ==========================================================
 
 import { createProviderRegistry } from "./registry.js";
-import { provider as supadata } from "./adapters/supadata.js";
+import { createSupadataProvider } from "./adapters/supadata.js";
+import { providerCredentials } from "./credentials.js";
 import { provider as youtubeTranscriptApi } from "./adapters/youtube-transcript-api.js";
+
+// The one real provider (Stage 2B): real fetch + the in-memory key store.
+const supadata = createSupadataProvider({
+    fetchImpl: (url, init) => globalThis.fetch(url, init),
+    credentials: providerCredentials
+});
 
 // Fresh registry with the built-in providers (tests use this so console
 // additions such as vodAnalyzer.registerMockProviders() cannot affect them).

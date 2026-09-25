@@ -31,9 +31,10 @@ import { getFormatForFilename, getAcceptAttribute, describeSupportedExtensions }
 import { buildTranscriptDocument, buildAcquiredTranscript } from "./transcript/pipeline.js";
 import { createFileAcquisition } from "./transcript/model.js";
 import { transcriptProviders } from "./transcript/providers/default-providers.js";
+import { providerCredentials } from "./transcript/providers/credentials.js";
 import { acquireTranscript, applyAcquisitionToProject } from "./transcript/providers/manager.js";
 import {
-    createAcquisitionState, withSelection, beginAttempt, completeAttempt, resetAttempt
+    createAcquisitionState, withSelection, beginAttempt, completeAttempt, resetAttempt, isCurrentAttemptResult
 } from "./transcript/providers/acquisition-state.js";
 import { renderSidebar, setActiveNavItem } from "./ui/sidebar.js";
 import { renderDashboard } from "./ui/dashboard.js";
@@ -73,7 +74,9 @@ function renderView(routeId) {
         acquisition: getAcquisition(),
         providers: transcriptProviders.list(),
         onSelectionChange: handleAcquisitionSelection,
-        onAcquire: handleAcquireTranscript
+        onAcquire: handleAcquireTranscript,
+        credentialReady: (providerId) => providerCredentials.has(providerId),
+        onCredentialChange: handleCredentialChange
     });
     else renderPlaceholderView(elements.content, routeId);
 
@@ -221,6 +224,13 @@ function handleAcquisitionSelection(changes) {
     setAcquisition(withSelection(getAcquisition(), changes));
 }
 
+// Stage 2B: API keys go to the in-memory store only (never to state,
+// storage, logs, or the DOM). value null = forget. Returns acceptance.
+function handleCredentialChange(providerId, value) {
+    if (value === null) { providerCredentials.clear(providerId); return true; }
+    return providerCredentials.set(providerId, value);
+}
+
 // override.providerId: "Try Again" / "Try With <provider>" — an explicit
 // user choice. The chosen provider becomes the selection, so the form
 // and provenance always agree about which provider was used.
@@ -245,10 +255,8 @@ async function handleAcquireTranscript(override = {}) {
 
     // The project may have changed while waiting; apply to the CURRENT one.
     // A reset (new project, file upload) or newer attempt makes this result stale.
-    const latest = getAcquisition();
-    if (!latest.attempt || latest.attempt.id !== attemptId) return;
     const current = state.get("project");
-    if (!current || !project || current.id !== project.id) return;
+    if (!isCurrentAttemptResult(getAcquisition(), attemptId, current, project)) return;
     const applied = applyAcquisitionToProject(current, result, buildAcquiredTranscript);
 
     if (applied.error) {

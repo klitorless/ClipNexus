@@ -59,3 +59,23 @@ export function createProvenanceRows(acquisition) {
     if (acquisition.type === ACQUISITION_TYPE.FILE) return [["Source", "Imported file"]];
     return [["Source", "Transcript provider"], ...createProviderSourceRows(acquisition)];
 }
+
+/**
+ * Plain-language notices where the provider's answer differs from, or is
+ * less certain than, what was requested (Stage 2B). Never guesses.
+ * @returns {string[]}
+ */
+export function createSourceNotices(source) {
+    const notices = [];
+    if (source.requestedLanguage && source.language && source.language !== source.requestedLanguage) {
+        notices.push(`You asked for ${describeLanguage(source.requestedLanguage)}; ` +
+            `the provider returned ${describeLanguage(source.language)}.`);
+    } else if (source.requestedLanguage && !source.language) {
+        notices.push(`You asked for ${describeLanguage(source.requestedLanguage)}; ` +
+            "the provider did not report which language it returned.");
+    }
+    if (source.method === "unknown" || !methodLabels[source.method]) {
+        notices.push("The provider did not report whether this is native captions or a generated transcript.");
+    }
+    return notices;
+}

@@ -344,6 +344,54 @@
     color: var(--danger);
 }
 
+.tag-muted {
+    color: var(--muted);
+}
+
+/* ---------- Provider credential (Stage 2B) ---------- */
+
+.credential-field .text-input {
+    flex: 1 1 12rem;
+    min-width: 0;
+}
+
+.credential-status {
+    font-size: var(--text-sm);
+    color: var(--text);
+    margin: 0 0 var(--space-2);
+}
+
+.field-error {
+    color: var(--danger);
+}
+
+.acquire-notice {
+    margin-top: var(--space-2);
+}
+
+/* ---------- Parsed segment preview (Stage 2B) ---------- */
+
+.segment-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-2);
+}
+
+.segment-item {
+    display: grid;
+    grid-template-columns: 5.5rem 1fr;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    overflow-wrap: anywhere;
+}
+
+.segment-time {
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+}
+
 /* ---------- Load check (visible only if app.js fails) ---------- */
 
 .load-check {

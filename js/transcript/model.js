@@ -57,11 +57,15 @@ export function deepFreeze(value) {
 //   "missing"   source had no timestamp for this position
 //   "malformed" source had a value that could not be interpreted
 //   "ambiguous" converted, but more than one reading was possible
+//   "derived"   NOT in the source; computed from other source values
+//               (e.g. end = start + duration). raw stays null because
+//               nothing was observed. (Added in Stage 2B.)
 export const TIMESTAMP_STATUS = Object.freeze({
     PARSED: "parsed",
     MISSING: "missing",
     MALFORMED: "malformed",
-    AMBIGUOUS: "ambiguous"
+    AMBIGUOUS: "ambiguous",
+    DERIVED: "derived"
 });
 
 export function createTimestamp({ raw = null, seconds = null, status } = {}) {
@@ -106,6 +110,8 @@ export function createSpeaker({ raw = null, value = null, source } = {}) {
  * @param {{start:number,end:number}} fields.offsets  Character range in document.rawText.
  * @param {object} fields.start        createTimestamp() result.
  * @param {object} fields.end          createTimestamp() result.
+ * @param {object} [fields.duration]   createTimestamp() result for a source
+ *                                     duration (Stage 2B). Missing by default.
  * @param {object} fields.speaker      createSpeaker() result.
  * @param {string} fields.text         Segment text exactly as in source (no cleanup).
  */
@@ -118,6 +124,7 @@ export function createSegment({
     offsets = null,
     start = createTimestamp(),
     end = createTimestamp(),
+    duration = createTimestamp(),
     speaker = createSpeaker(),
     text = ""
 }) {
@@ -133,6 +140,7 @@ export function createSegment({
         },
         start,
         end,
+        duration,                             // SOURCE duration if the format has one
         speaker,
         text,                                 // SOURCE: verbatim
         derived: {}                           // DERIVED: future normalizer output lives here

@@ -29,26 +29,26 @@ function createStatusCard() {
     const card = createElement("article", "card");
     card.append(
         createElement("span", "tag", "Current stage"),
-        createElement("h2", "card-title", "Stage 2A — Transcript Acquisition Architecture"),
+        createElement("h2", "card-title", "Stage 2B — First Real Transcript Provider"),
         createElement(
             "p",
             "card-body",
             "Available now: identify a YouTube video from its URL (including a start-time hint), " +
-            "import a transcript file as raw source evidence, and choose a transcript provider, " +
-            "language, and acquisition method on the Transcripts page."
+            "import a transcript file as raw source evidence, or fetch the video's transcript from " +
+            "Supadata with your own API key on the Transcripts page. JSON transcripts are parsed into " +
+            "timestamped segments."
         ),
         createElement(
             "p",
             "card-body",
-            "Providers are architecture only: none is connected, so no transcript is retrieved from " +
-            "the internet yet. Also not built: transcript parsing, video metadata, an embedded player, " +
-            "AI analysis, POIs, and clips. Projects are lost when the page reloads."
+            "Not built yet: parsing for TXT/SRT/VTT files, transcript validation, video metadata, an embedded " +
+            "player, AI analysis, POIs, and clips. Projects and API keys are forgotten when the page reloads."
         ),
         createElement(
             "p",
             "field-hint",
             "Completed: Stage 1.5 — Transcript Data Foundation · Stage 1.6 — Project & Video Foundation · " +
-            "Stage 1.7 — Project & Video Foundation Hardening"
+            "Stage 1.7 — Project & Video Foundation Hardening · Stage 2A — Transcript Acquisition Architecture"
         )
     );
     return card;

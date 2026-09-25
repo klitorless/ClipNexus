@@ -9,6 +9,11 @@
 //   status                       "available" | "not_implemented"
 //   enabled                      boolean (false = listed, not selectable)
 //   capabilities                 see createCapabilities()
+//   credential                   null | { label, hint }  (Stage 2B, optional)
+//                                The user must supply a credential (e.g. an
+//                                API key) before this provider can run. Only
+//                                the descriptor lives here — values are held
+//                                in memory by credentials.js, never here.
 //   getTranscript(video, options) → Promise<AdapterResponse>
 //       video:   { platform, videoId, canonicalUrl }   (normalized, frozen;
 //                never the raw user URL — adapters do not resolve URLs)
@@ -21,9 +26,12 @@
 //               language: string|null, sourceId: string|null } }
 //   { success: false, error: { code: <ACQUISITION_ERROR_CODES>, detail?: {} } }
 //
-//   rawText must be the transcript text exactly as delivered, in a
-//   format the app's parser registry supports. Anything else (extra
-//   fields, raw response bodies) is dropped here.
+//   rawText must carry the transcript text exactly as delivered, in a
+//   format the app's parser registry supports. An adapter MAY re-envelope
+//   a provider's structured response into a supported format (Stage 2B:
+//   Supadata chunks → the generic JSON record shape), but must copy text
+//   and timing values verbatim — never clean, merge, or re-time them.
+//   Anything else (extra fields, raw response bodies) is dropped here.
 //
 // ---- AcquisitionResult (what the rest of the app sees) ----
 //   see normalizeAdapterResponse() below.
@@ -82,11 +90,21 @@ export function isValidProvider(provider) {
         typeof provider.getTranscript === "function";
 }
 
+function createCredentialDescriptor(credential) {
+    if (!credential) return null;
+    return Object.freeze({
+        label: nonEmptyString(credential.label) ? credential.label : "API key",
+        hint: typeof credential.hint === "string" ? credential.hint : ""
+    });
+}
+
 /** Adapters call this so every provider has the same frozen shape. */
-export function defineProvider({ id, name, description = "", status, enabled = true, capabilities, getTranscript }) {
+export function defineProvider({ id, name, description = "", status, enabled = true, capabilities,
+    credential = null, getTranscript }) {
     return Object.freeze({
         id, name, description, status, enabled,
         capabilities: createCapabilities(capabilities),
+        credential: createCredentialDescriptor(credential),
         getTranscript
     });
 }
@@ -99,7 +117,8 @@ export function describeProvider(provider) {
         description: provider.description,
         status: provider.status,
         enabled: provider.enabled,
-        capabilities: provider.capabilities
+        capabilities: provider.capabilities,
+        credential: provider.credential ?? null        // descriptor only — never a value
     });
 }
 

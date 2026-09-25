@@ -60,3 +60,14 @@ export function completeAttempt(acquisition, attemptId, { error = null, source =
         attempt: { ...acquisition.attempt, finishedAt: new Date().toISOString(), error, source }
     });
 }
+
+/**
+ * Stale-result guard (Stage 2B: extracted from app.js unchanged so it can be
+ * regression-tested). A finished request may be applied only if its attempt
+ * is still the current one AND the same project is still open.
+ */
+export function isCurrentAttemptResult(latestAcquisition, attemptId, currentProject, projectAtStart) {
+    if (!latestAcquisition || !latestAcquisition.attempt || latestAcquisition.attempt.id !== attemptId) return false;
+    if (latestAcquisition.status !== ACQUISITION_STATUS.ACQUIRING) return false;
+    return Boolean(currentProject && projectAtStart && currentProject.id === projectAtStart.id);
+}

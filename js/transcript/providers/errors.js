@@ -35,7 +35,10 @@ const definitions = {
     PROVIDER_DISABLED: { retryable: false, message: "The selected transcript provider is disabled." },
     UNSUPPORTED_VIDEO: { retryable: false, message: "This provider does not support videos from this platform." },
     UNSUPPORTED_OPTION: { retryable: false, message: "This provider does not support the selected language or acquisition option." },
-    INVALID_REQUEST: { retryable: false, message: "The transcript request was incomplete. Link a video first." }
+    INVALID_REQUEST: { retryable: false, message: "The transcript request was incomplete. Link a video first." },
+    // Stage 2B: the provider needs a user-supplied key and none was entered.
+    // Raised before any network request; nothing was sent.
+    CREDENTIAL_REQUIRED: { retryable: false, message: "Enter an API key for this provider first. Nothing was sent." }
 };
 
 export const ACQUISITION_ERROR_CODES = Object.freeze(

@@ -46,7 +46,7 @@ export const TRANSCRIPT_FORMATS = Object.freeze([
         hasTimestamps: "optional",
         hasEndTimes: "optional",
         hasSpeakers: "optional",
-        description: "Structured segment records (schema to be mapped in Stage 2)."
+        description: "Array of records (or { segments: [...] }) with text and start/end/duration in seconds or startMs/endMs/durationMs."
     })
 ]);
 

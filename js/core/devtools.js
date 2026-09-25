@@ -26,6 +26,7 @@ import { createSegment, createTimestamp, withDerivedLayer } from "../transcript/
 import { resolveVideoUrl } from "../video/video-resolver.js";
 import { addProjectTests, addStage17Tests } from "./devtools-project-tests.js";
 import { addProviderTests } from "./devtools-provider-tests.js";
+import { addSupadataTests } from "./devtools-supadata-tests.js";
 import { createMockProvider } from "../transcript/providers/adapters/mock.js";
 
 function getStoredTranscript(appState) {
@@ -84,8 +85,20 @@ function buildTests(appState) {
             const doc = parseSample(id);
             return Object.isFrozen(doc) && Object.isFrozen(doc.source) && Object.isFrozen(doc.segments);
         });
+        // Stage 2B update: JSON is implemented; the others are still placeholders.
+        if (id === "json") return;
         add(`${id}: reports placeholder parse status`, () =>
             parseSample(id).parse.status === "not_implemented" && parseSample(id).processing.parsed === false);
+    });
+
+    add("json: parses records into segments, raw values kept (Stage 2B)", () => {
+        const doc = parseSample("json");
+        const [segment] = doc.segments;
+        return doc.parse.status === "complete" && doc.processing.parsed === true && doc.segments.length === 1 &&
+            segment.text === "h\u00e9llo" && segment.start.raw === "1.0" && segment.start.seconds === 1 &&
+            segment.start.status === "parsed" && segment.end.raw === "3.5" && segment.end.seconds === 3.5 &&
+            segment.speaker.value === "Streamer" && segment.speaker.source === "explicit" &&
+            segment.duration.status === "missing" && doc.rawText === samples.json;
     });
 
     add("mutating a document throws (strict mode)", () => {
@@ -144,6 +157,9 @@ function buildTests(appState) {
 
     // Stage 2A: provider architecture (deterministic mocks, no network).
     addProviderTests(add);
+
+    // Stage 2B: the first real provider (fake fetch — no network) + JSON parser.
+    addSupadataTests(add);
 
     return tests;
 }

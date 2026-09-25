@@ -14,12 +14,14 @@ import { createTranscriptSummaryCard } from "./dashboard.js";
 import { createElement, createDetailList } from "./dom.js";
 import { createLinkedVideoCard } from "./project-panel.js";
 import { createAcquisitionPanel } from "./acquisition-panel.js";
+import { ACQUISITION_TYPE, TIMESTAMP_STATUS } from "../transcript/model.js";
 
 const previewLineLimit = 30;
+const segmentPreviewLimit = 20;
 
 const statusLabels = {
     pending: "Pending",
-    not_implemented: "Not implemented (Stage 2)",
+    not_implemented: "Not implemented yet",
     complete: "Complete",
     failed: "Failed",
     unvalidated: "Unvalidated",
@@ -64,16 +66,49 @@ function createPipelineCard(transcript) {
     return card;
 }
 
-function createRawPreviewCard(rawText) {
+// Display only: derived seconds → m:ss.mmm. Unknown values say so — never 0.
+function formatTimestamp(timestamp) {
+    if (timestamp.seconds === null) {
+        return timestamp.status === TIMESTAMP_STATUS.MISSING ? "no time" : timestamp.status;
+    }
+    const total = timestamp.seconds;
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const seconds = (total % 60).toFixed(3).padStart(6, "0");
+    return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}` : `${minutes}:${seconds}`;
+}
+
+// Stage 2B: first parsed segments (derived data, shown as text only).
+function createSegmentPreviewCard(segments) {
+    const card = createElement("article", "card");
+    card.dataset.section = "segments";
+    card.append(createElement("span", "tag", "Derived"));
+    card.append(createElement("h2", "card-title", "Parsed segments"));
+    card.append(createElement("p", "card-body", segments.length > segmentPreviewLimit
+        ? `First ${segmentPreviewLimit} of ${segments.length.toLocaleString()} segments. Times are derived from the raw values.`
+        : "All segments. Times are derived from the raw values."));
+    const list = createElement("ol", "segment-list");
+    segments.slice(0, segmentPreviewLimit).forEach((segment) => {
+        const item = createElement("li", "segment-item");
+        item.append(createElement("span", "segment-time", formatTimestamp(segment.start)),
+            createElement("span", "segment-text", segment.text));
+        list.append(item);
+    });
+    card.append(list);
+    return card;
+}
+
+function createRawPreviewCard(rawText, fromProvider) {
     const card = createElement("article", "card");
     const { preview, truncated } = getPreview(rawText, previewLineLimit);
+    const origin = fromProvider
+        ? "Provider text and timing values exactly as delivered, one record per line. Stored unmodified."
+        : "Exactly as loaded. Stored unmodified.";
 
     card.append(createElement("span", "tag", "Source evidence"));
     card.append(createElement("h2", "card-title", "Raw transcript"));
     card.append(createElement("p", "card-body",
-        truncated
-            ? `First ${previewLineLimit} lines, exactly as loaded. Stored unmodified.`
-            : "Full file, exactly as loaded. Stored unmodified."));
+        truncated ? `First ${previewLineLimit} lines. ${origin}` : `Full transcript. ${origin}`));
     card.append(createElement("pre", "raw-preview", preview));
     return card;
 }
@@ -116,6 +151,8 @@ export function renderTranscriptsView(mountElement, project, acquisitionView = n
         ...header,
         sourceCard,
         createPipelineCard(transcript),
-        createRawPreviewCard(transcript.rawText)
+        ...(transcript.segments.length ? [createSegmentPreviewCard(transcript.segments)] : []),
+        createRawPreviewCard(transcript.rawText,
+            Boolean(transcript.acquisition && transcript.acquisition.type === ACQUISITION_TYPE.PROVIDER))
     );
 }

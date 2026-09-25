@@ -10,17 +10,41 @@ The AI layer will **discover, describe, preserve, and trace** evidence. It will 
 
 | Stage | Scope | Status |
 |---|---|---|
-| Stage 1 | Frontend application shell | **Complete** |
-| Stage 1.5 | Transcript architecture foundation | **Complete** |
+| Stage 1 | Frontend application shell (layout, hash navigation, upload control) | **Complete** |
+| Stage 1.5 | Canonical transcript architecture (formats, model, parser dispatch, validator shape) | **Complete** |
 | Stage 1.6 | Project + video foundation (URL → video identity) | **Complete** |
 | Stage 1.7 | Hardening + architecture freeze (start hint, safe replace, alignment state) | **Complete** |
-| Stage 2A | Transcript acquisition architecture (provider registry, manual switching, provenance) | **Complete** (architecture only; no provider connected) |
-| Stage 2 | Transcript parsing, normalization, validation, and chunking | Not yet implemented |
+| Stage 2A | Transcript acquisition architecture (provider registry, manual switching, provenance) | **Complete** |
+| Stage 2B | First real transcript provider (Supadata) + JSON parser | **Complete** |
+| Stage 3+ | TXT/SRT/VTT parsing, validation, chunking, AI analysis, POIs, clips | Not started |
 
-Nothing after Stage 2A exists yet. **Stage 2A establishes the transcript-acquisition architecture but does not retrieve transcripts from any external service.** The two listed providers are placeholders that answer `NOT_IMPLEMENTED` (see [Transcript acquisition](#transcript-acquisition-stage-2a)).
-- **No format is actually parsed.** Uploaded files are loaded, stored, and shown as raw text, but every transcript currently has 0 segments, and validation runs no checks.
-- **Pasting a video URL only identifies the video.** It does **not** fetch the title, thumbnail, or duration, retrieve or generate transcripts, or embed or play the video. Nothing is sent over the network.
-- **"Get Transcript" does not reach the internet.** Every built-in provider is a placeholder, so it always reports "not connected yet". The only transcripts that can currently exist come from file import (or, for UI preview, from clearly named console mocks).
+Stages 1.5–1.7 set up the canonical architecture: project, video identity, and transcript model. Stage 2A added the provider architecture, with no network access. Stage 2B connects the first real provider through that architecture without changing its shape: **Supadata**, using the user's own API key.
+
+### What exists today
+
+| Area | Status |
+|---|---|
+| App shell, navigation, upload | IMPLEMENTED |
+| Video URL → identity (YouTube) | IMPLEMENTED |
+| Canonical transcript / project model | IMPLEMENTED |
+| Provider architecture (registry, contract, errors, switching, provenance) | IMPLEMENTED |
+| Supadata transcript provider (YouTube, native / generated / auto, language) | IMPLEMENTED |
+| JSON transcript parser (used by Supadata results and `.json` imports) | IMPLEMENTED |
+| youtube-transcript-api provider | ARCHITECTURE ESTABLISHED (placeholder; needs a Python helper/backend) |
+| TXT / SRT / VTT parsers | ARCHITECTURE ESTABLISHED (placeholders, 0 segments) |
+| Validator, chunker | ARCHITECTURE ESTABLISHED (no checks run, no chunks) |
+| Persistence | ARCHITECTURE ESTABLISHED (documented boundary, nothing stored) |
+| Video metadata, player, seeking | PLANNED |
+| AI analysis | PLANNED |
+| POIs / event reconciliation | PLANNED |
+| ClipSpec | PLANNED |
+| Clip editor | FUTURE |
+
+Honest scope:
+- **Get Transcript works only with Supadata, and only when you enter your own Supadata API key.** Without a key, the button stays disabled and nothing is sent.
+- **Only JSON is parsed.** Imported `.txt`, `.srt`, and `.vtt` files are stored and shown as raw text with 0 segments.
+- **Pasting a video URL only identifies the video.** It does not fetch the title, thumbnail, or duration, and it does not embed or play the video.
+- **Nothing analyzes the transcript yet.** There are no POIs, events, clip candidates, rankings, or scores.
 
 ## Current capabilities
 
@@ -30,7 +54,10 @@ Nothing after Stage 2A exists yet. **Stage 2A establishes the transcript-acquisi
 - YouTube `?t=` / `#t=` / embed `start=` kept as a separate, unverified start-position hint
 - Inline confirmation before a different video replaces a project that holds a transcript
 - Transcripts page shows the linked video (platform, ID, title status, source, start hint, alignment)
-- Transcript provider selection (provider, language, acquisition method) driven by a central registry
+- Transcript provider selection (provider, language, acquisition method) driven by a central registry, with honest status labels (Available / Needs API key / Not implemented)
+- Real transcript retrieval from Supadata (YouTube) with a user-supplied, in-memory API key
+- JSON transcript parsing into canonical segments (raw timing values kept alongside seconds)
+- Parsed-segment preview (first 20 segments; unknown times shown as a status, never 0)
 - Standardized acquisition errors with manual provider switching ("Try Again" / "Try With …")
 - Provenance on every transcript: imported file vs. provider (provider, method, native/generated, language, retrieval time, source id, video)
 - A frozen `Project` in state that links the video and the transcript
@@ -53,7 +80,9 @@ Defined once in `js/transcript/formats.js`. The upload control's `accept` list, 
 | `vtt` | `.vtt` | required | yes | optional (`<v>` tags) |
 | `json` | `.json` | optional | optional | optional |
 
-Stage 1.5 picks the format by file extension only. Content-based detection is Stage 2.
+Stage 1.5 picks the format by file extension only. Content-based detection is a later stage.
+
+Only `json` is parsed today (Stage 2B). It accepts an array of records or `{ "segments": [...] }`. Each record has `text` plus optional timing, given either in seconds (`start`, `end`, `duration`; numbers, numeric strings, or clock strings like `01:02.5`) or in milliseconds (`startMs`, `endMs`, `durationMs`). Optional `speaker` and `id` fields are also read. The raw value is kept exactly as written. A record that uses both second and millisecond keys for the same value is marked `ambiguous`. An end time computed from start + duration is marked `derived`. Records without text are skipped and noted. If no record is usable, parsing fails. `txt`, `srt`, and `vtt` are still placeholders.
 
 ## Canonical transcript model
 
@@ -125,7 +154,7 @@ ValidationIssue {
 }
 ```
 
-Timestamp `status` values: `parsed`, `missing`, `malformed`, `ambiguous`.
+Timestamp `status` values: `parsed`, `missing`, `malformed`, `ambiguous`, and `derived` (added in 2B for a value computed from other parsed values, such as end = start + duration, with `raw: null`). Segments may also carry an optional `duration` timestamp. If the source gave none, it is `missing`.
 
 Planned issue types: `timestamp_gap`, `timestamp_large_gap`, `timestamp_overlap`, `timestamp_reset`, `timestamp_jump`, `timestamp_malformed`, `timestamp_missing`, `timestamp_duplicate`, `speaker_missing`, `order_suspicious`, `segment_duplicate`, `segment_empty`, `section_missing`, `quality_concern`.
 
@@ -243,7 +272,12 @@ Create `js/video/platforms/<name>.js` exporting `platformId`, `label`, `matchesH
 
 ## Transcript acquisition (Stage 2A)
 
-Stage 2A adds the **architecture** for getting transcripts from interchangeable providers. It does **not** retrieve anything from an external service. No provider API, scraping, speech-to-text, API key, backend, or network call exists.
+Stage 2A added the **architecture** for getting transcripts from interchangeable providers. Stage 2B plugs the first real provider (Supadata) into it. The rest of the pipeline is unchanged:
+
+```
+Video URL → Video Identity → Provider Selection → Provider Adapter
+    → Normalized AcquisitionResult → TranscriptDocument → Parser → Validator
+```
 
 ```
 normalized VIDEO (project.video, Stage 1.6/1.7)
@@ -278,7 +312,11 @@ Each adapter (`js/transcript/providers/adapters/<name>.js`) exports a `provider`
 - `options` is `{ language: string | null, method: "any" | "native" | "generated" }`. `language: null` means "provider default". English is never assumed.
 - An adapter returns `{ success: true, transcript: { rawText, format }, source: { method, language, sourceId } }` or `{ success: false, error: { code, detail } }`. `rawText` must be the transcript text exactly as delivered, in a format the parser registry supports (`txt`, `srt`, `vtt`, `json`). Everything else an adapter returns is dropped at the boundary.
 
-Built-in adapters: `supadata` and `youtube-transcript-api`. Both are **placeholders** (`status: "not_implemented"`). They return `NOT_IMPLEMENTED` and make no requests. Their capabilities are the intended ones and must be re-checked when each is implemented. `adapters/mock.js` holds deterministic fakes used by the self-tests. It is never registered by default.
+Built-in adapters:
+- `supadata`: **real** (`status: "available"`). See [Supadata provider](#supadata-provider-stage-2b).
+- `youtube-transcript-api`: **placeholder** (`status: "not_implemented"`). It is a Python library, so it can't run in the browser, and using it needs a user-run helper or a backend. It returns `NOT_IMPLEMENTED` and makes no requests.
+
+The UI shows a status for display only, derived from registry data: **Available**, **Needs API key** (an available provider that declares a `credential` but has none entered yet), **Not implemented**, or **Disabled**. "Registered" never means "usable". `adapters/mock.js` holds deterministic fakes used by the self-tests. It is never registered by default.
 
 ### Provider registry
 
@@ -383,12 +421,64 @@ Every `TranscriptDocument` has one `acquisition` record with the same shape for 
 - `rawText` is stored once, exactly as delivered. No provider response object is stored anywhere.
 - File import and provider acquisition share one pipeline (`js/transcript/pipeline.js`: parser → validator → frozen document).
 
+### Supadata provider (Stage 2B)
+
+`js/transcript/providers/adapters/supadata.js` is the only file that knows Supadata's URL, headers, response format, or error codes.
+
+**Setup.** Get your own API key from [supadata.ai](https://supadata.ai). On the Transcripts page, pick "Supadata", paste the key into the Supadata API key field, and tap **Use Key**. The key:
+- is held in memory only (`js/transcript/providers/credentials.js`). It is never written to localStorage, IndexedDB, cookies, the project, logs, or the DOM, and reloading the page forgets it.
+- is sent only to `https://api.supadata.ai` in the `x-api-key` header, and only when you tap Get Transcript.
+- is never in the source code, README, Git history, or any config file.
+
+**Request.** `GET /v1/transcript?url=<canonical YouTube URL>&text=false&mode=<auto|native|generate>[&lang=<code>]` is sent with `credentials: "omit"`, `referrerPolicy: "no-referrer"`, `cache: "no-store"`, and a 25 s deadline. If Supadata answers `202` with a `jobId`, the adapter polls `/v1/transcript/{jobId}` every 1.5 s until the same deadline.
+
+**Normalization.**
+- `rawText` is Supadata's timed chunks re-enveloped as JSON records, one per line: `{"startMs":…,"durationMs":…,"text":…}`. The text and timing values are copied verbatim, with no cleaning, trimming, merging, or paraphrasing. The shared JSON parser turns this into segments, so `raw` keeps the millisecond value, `seconds` is computed, and `end` is `derived`.
+- The acquisition method maps as follows: requested `native` → `native` (`generated: false`); requested `generate` → `generated` (`true`); requested `auto` → `unknown` (`generated: null`), because Supadata doesn't say which one it used.
+- `language` is the language Supadata **reported**, not the one you requested. When they differ, or no language was reported, the success view says so.
+- `sourceId` is the async `jobId` when there was one, otherwise `null`.
+- No Supadata field (`availableLangs`, `lang`, `offset`, and so on) leaves the adapter.
+
+**Errors.**
+
+| Supadata answer | Code |
+|---|---|
+| `unauthorized`, `forbidden` / 401, 403 | `AUTHENTICATION_FAILED` |
+| `limit-exceeded`, `upgrade-required` / 429, 402 | `RATE_LIMITED` |
+| `transcript-unavailable` | `TRANSCRIPT_UNAVAILABLE` |
+| `not-found` / 404 | `VIDEO_UNAVAILABLE` |
+| `invalid-request`, `internal-error`, 500 | `PROVIDER_ERROR` |
+| other 5xx, network failure | `PROVIDER_UNAVAILABLE` |
+| 408, 504, deadline reached | `PROVIDER_TIMEOUT` |
+| malformed / empty body, anything else | `MALFORMED_RESPONSE` / `UNKNOWN_ERROR` |
+
+`detail` (console only) holds structural facts such as `httpStatus`, Supadata's error code, a fixed reason, the deadline, or the `jobId`. It never holds Supadata's message text, and neither the message nor the key is ever shown or stored. Without a key, the request check fails with `CREDENTIAL_REQUIRED` and nothing is sent.
+
+**Network statement.** The only external request this app ever makes is the Supadata transcript request (plus polling for the same job), sent after you tap Get Transcript. A Content-Security-Policy in `index.html` enforces this: `connect-src 'self' https://api.supadata.ai`, and no third-party scripts, styles, fonts, or images.
+
+**Tradeoff.** Calling Supadata straight from the browser is fine for a single user with their own key. A shared or multi-user deployment should put a small server-side proxy in front of it so the key never reaches browsers. The adapter would then point at that proxy, and nothing else would need to change.
+
+### Contract changes in Stage 2B
+
+Everything is additive and backward-compatible. No Stage 1.5–2A shape was removed or renamed.
+
+| Change | Why | Depends on it |
+|---|---|---|
+| Timestamp status `derived` | The JSON parser computes `end` from start + duration. Calling it `parsed` would claim the source said so. | model, json parser, segment preview |
+| Optional segment `duration` timestamp (default `missing`) | Supadata and many JSON transcripts give a duration, not an end time. Keeping it preserves the source value. | model, json parser |
+| Optional provider `credential` descriptor `{ label, hint }` | Providers need a way to declare a user-supplied key without the UI naming any provider. | provider.js, acquisition panel |
+| Error code `CREDENTIAL_REQUIRED` (request check) | A missing key must fail before any request is made, with a clear message. | errors.js, manager request checks |
+| `rawText` contract note: an adapter may re-envelope a response, but its text and timing must be verbatim | A JSON API has no single "file", so the verbatim rule applies to the evidence (text and timing), not the vendor wrapper. | adapters |
+| Stale-attempt check extracted to `isCurrentAttemptResult()` | Makes the existing guard testable. Behaviour is unchanged. | app.js |
+
+Updated Stage 2A tests (because the facts changed, not the rules): the JSON placeholder test now checks real parsing; the default-provider test checks that Supadata is available and youtube-transcript-api is not implemented; the `NOT_IMPLEMENTED` test runs only on placeholders, so self-tests never make live calls; and the dashboard test checks the Stage 2B status card.
+
 ### Future provider integration plan
 
-1. Implement one adapter at a time inside its own file: request, auth, and mapping of the provider's response and errors to the contract above. Set `status: "available"`.
-2. Credentials and network access will need a deliberate design (a user-run local helper or a backend). That's a later stage, and nothing in the UI or the manager should need to change.
-3. Real language lists can come from provider capabilities. The placeholder list in `js/transcript/languages.js` is replaced, not duplicated.
-4. Optional automatic fallback, if added, must be an explicit, visible mode that records each attempt.
+1. Add one adapter per file, with its request, auth, and response/error mapping kept inside it. Set `status: "available"` only when it's real.
+2. youtube-transcript-api needs a user-run helper or backend (Python). That is its own stage.
+3. Real language lists can come from provider capabilities. The placeholder list in `js/transcript/languages.js` gets replaced, not duplicated.
+4. Optional automatic fallback, if it's ever added, must be an explicit, visible mode that records each attempt.
 
 ## Provenance philosophy
 
@@ -432,7 +522,8 @@ vod-analyzer/
     │   ├── project.js         Project model: video + transcript container, lifecycle
     │   ├── devtools.js        window.vodAnalyzer console helpers + self-tests
     │   ├── devtools-project-tests.js   Stage 1.6 + 1.7 self-tests
-    │   └── devtools-provider-tests.js  Stage 2A self-tests (deterministic mocks)
+    │   ├── devtools-provider-tests.js  Stage 2A self-tests (deterministic mocks)
+    │   └── devtools-supadata-tests.js  Stage 2B self-tests (fake fetch, no network)
     ├── video/
     │   ├── video-model.js     Video identity vs. metadata, metadata status
     │   ├── video-resolver.js  Platform-neutral URL → identity resolver
@@ -450,16 +541,17 @@ vod-analyzer/
     │   │   ├── registry.js    Central provider registry
     │   │   ├── manager.js     Runs one attempt; applies results without harming the project
     │   │   ├── acquisition-state.js  Attempt state (state.ui), separate from the transcript
-    │   │   ├── default-providers.js  The app's registry instance
+    │   │   ├── credentials.js In-memory credential store (never persisted or shown)
+    │   │   ├── default-providers.js  The app's registry instance (wires real fetch + credentials)
     │   │   └── adapters/
-    │   │       ├── supadata.js                Placeholder (NOT_IMPLEMENTED, no network)
+    │   │       ├── supadata.js                Real Supadata adapter (only file with Supadata details)
     │   │       ├── youtube-transcript-api.js  Placeholder (NOT_IMPLEMENTED, no network)
     │   │       └── mock.js                    Deterministic test providers (never registered by default)
     │   ├── formats/
     │   │   ├── txt.js         Plain-text parser (placeholder + Stage 2 contract)
     │   │   ├── srt.js         SubRip parser (placeholder + Stage 2 contract)
     │   │   ├── vtt.js         WebVTT parser (placeholder + Stage 2 contract)
-    │   │   └── json.js        JSON parser (placeholder + Stage 2 contract)
+    │   │   └── json.js        JSON parser (implemented in Stage 2B)
     │   ├── validator.js       Issue types, severity, issue factory, observational validator
     │   └── chunker.js         Chunk shape + defaults (600 s windows, 60 s overlap)
     └── ui/
@@ -481,7 +573,7 @@ No install or build step. Open `index.html` through any local static server. On 
 Open the browser console (Acode: enable "Show Console Toggler" in Preview settings) and run:
 
 ```js
-await vodAnalyzer.runSelfTests()   // 83 architectural checks, printed as a table
+await vodAnalyzer.runSelfTests()   // 108 checks, printed as a table (no network)
 vodAnalyzer.listProviders()        // registry descriptors
 vodAnalyzer.registerMockProviders() // optional UI preview: "Mock A (always fails)" + "Mock B (returns test data)"
 vodAnalyzer.inspectProject()    // the frozen Project (or null)
@@ -540,26 +632,46 @@ The 32 Stage 2A checks use deterministic mock providers in local registries. The
 - **Switching:** A fails → select B → B supplies the transcript, and provenance says B; any failure (all 12 codes, or a pipeline failure) leaves the existing transcript untouched; B is never called automatically; project id and video identity don't change; attempt state is separate and frozen and ignores stale results; a result for a different video is not attached.
 - **Provenance:** provider, method, language, requested values, generated flag, retrieval time, source id, and video are all recorded; native, generated, and unknown stay distinguishable; acquired `rawText` is stored exactly once; imported files are marked `file` with nulls for unknowns.
 - **UI:** the panel is built from the registry; the failure view offers Try Again (retryable only) and Try With another provider, with hostile names rendered as text; the success view and summary card show provenance; the dashboard status is honest.
+The 25 Stage 2B checks use a fake `fetch` and a local credential store. They make no network calls and never touch the app's key. They cover:
+- **Success:** request shape (URL, `x-api-key`, no cookies or referrer), async `jobId` polling, and normalized provenance.
+- **Failure:** every Supadata error or HTTP status maps to its standard code; the project and the existing transcript are unchanged; the error message never leaks.
+- **Malformed:** non-JSON, missing `content`, non-array content, and bad chunks all give `MALFORMED_RESPONSE`.
+- **Timestamps:** raw ms kept, seconds computed, `end` derived, missing timing never turned into 0.
+- **Language and method:** reported vs. requested language kept apart; native → `false`, generated → `true`, auto → `null`.
+- **Isolation:** no vendor field in the result or document; the key is absent from the result, project, `JSON.stringify` of the store, and DOM.
+- **Credentials:** no key → `CREDENTIAL_REQUIRED` with no request sent; the key is validated; clearing it works.
+- **Attempts:** a stale result is ignored; replacement keeps the project id and video; a failure keeps an imported transcript.
+- **JSON parser:** arrays and `{segments}`, s vs. ms keys, ambiguity, skipped records, and total failure.
+- **UI and security:** honest status labels; an entered key is never rendered; the switch list offers only runnable providers; the success view shows provenance and a language mismatch; the CSP allows only the app and `api.supadata.ai`.
+
+Stage 2B was also checked by hand against the live Supadata API with a real key. In a headless browser, a real transcript came back (61 segments, with native/English provenance), and a bad key gave a real 401 → `AUTHENTICATION_FAILED` with the imported transcript kept. The only external host contacted was `api.supadata.ai`, and nothing was written to storage.
 
 ## Privacy and security
 
 - Files are read locally with `File.text()` and kept in memory only.
-- No analytics, tracking, third-party scripts, or network requests. Video URLs are resolved locally and never fetched.
-- Transcript providers make no requests in Stage 2A. Provider names, errors, and provenance are rendered with `textContent`. Provider error text is never shown, only the fixed message for its code.
+- No analytics, tracking, telemetry, or third-party scripts. Video URLs are resolved locally and never fetched.
+- The only external request is the Supadata transcript request (and polling for its job), made after you tap Get Transcript with your own key. The CSP in `index.html` allows connections only to the app itself and `https://api.supadata.ai`.
+- API keys are held in memory only and never saved, logged, rendered, or committed. Supadata's error text is never shown.
+- Supadata receives the canonical YouTube URL and your key. Its own privacy policy applies to that request. Provider names, errors, and provenance are rendered with `textContent`. Provider error text is never shown, only the fixed message for its code.
 - Video URL input is untrusted. It is parsed with `new URL()`, only `http(s)` is accepted, and it is displayed with `textContent`. No links, images, or iframes are created from it.
 - Transcript content is untrusted. It is rendered with `textContent` only and never with `innerHTML`, `eval`, or script execution.
 
 ## Current limitations
 
-- No format is parsed yet: `segments` is always empty and `parse.status` is `not_implemented`.
+- Only JSON is parsed. TXT, SRT, and VTT have 0 segments and `parse.status` is `not_implemented`.
 - Validation runs no checks (`valid: null`, status `not_implemented`).
 - Chunking returns an empty array.
 - Format detection is extension-only.
 - `File.text()` always decodes as UTF-8 and drops a leading byte-order mark. Non-UTF-8 files (e.g. Windows-1252 SRTs) may show replacement characters.
 - One project (one video, one transcript) at a time, held in memory; it's gone after a page reload.
 - Video: identity only. Title, thumbnail, and duration are never fetched (`metadata.status` stays `unknown`).
-- No transcript retrieval from URLs: every built-in provider is a placeholder returning `NOT_IMPLEMENTED`, and there are no API keys, network calls, or backend. No embedded player, no playback, no seeking.
-- Provider-acquired transcripts go through the same placeholder parser, so they also have 0 segments until Stage 2 parsing exists.
+- Only one real provider (Supadata, YouTube only). youtube-transcript-api is still a placeholder that needs a backend.
+- The Supadata key is forgotten on reload by design, so you re-enter it each session.
+- Supadata's `upgrade-required` (402) maps to `RATE_LIMITED`, because the standard vocabulary has no "plan/quota" code.
+- With `mode=auto`, whether the captions were native or generated is unknown (`generated: null`), because Supadata doesn't report it.
+- Very long videos that take longer than the 25 s deadline to generate give `PROVIDER_TIMEOUT`. Trying again may help. A retry sends a new request and doesn't resume the old job.
+- Direct browser calls suit a single user. A shared deployment needs a server-side proxy (see the tradeoff above).
+- No embedded player, no playback, no seeking.
 - The language list is a fixed placeholder, not reported by providers.
 - A successful acquisition replaces an existing transcript without a separate confirmation (a failed one never changes it). The panel says so before you tap Get Transcript.
 - Only YouTube is recognized. YouTube ID validation is by shape (11 characters). The resolver cannot tell whether the video actually exists or is public.
@@ -615,7 +727,7 @@ URL → VIDEO RESOLVER → VIDEO IDENTITY → METADATA ACQUISITION → TRANSCRIP
 
 The AI layer will discover, describe, trace, and preserve uncertainty. It will not rank, pick "best" clips, predict virality, or decide what to publish. The human is the final reviewer.
 
-## Architectural invariants (Stage 2A)
+## Architectural invariants (Stage 2A, kept in 2B)
 
 1. Raw transcript data is preserved exactly as delivered or loaded (`rawText`, stored once).
 2. The canonical transcript model is provider-agnostic; no provider response object enters it.
@@ -629,13 +741,15 @@ The AI layer will discover, describe, trace, and preserve uncertainty. It will n
 10. A failed acquisition never changes or destroys an existing transcript or the project.
 11. Attempt state lives in `state.ui` and is never part of the canonical transcript.
 12. File import and provider acquisition share one pipeline and one document shape.
-13. No network acquisition exists in Stage 2A; placeholders return `NOT_IMPLEMENTED`.
-14. No persistence (localStorage, IndexedDB, backend) and no credentials.
+13. Network acquisition happens only inside an adapter, only when the user asks, and only to that provider's host. Placeholders return `NOT_IMPLEMENTED`.
+14. No persistence (localStorage, IndexedDB, backend). Credentials are in memory only, entered by the user, and never shown or stored.
 15. No framework migration: vanilla HTML/CSS/ES modules, no build step, no state library.
+16. Acquisition never cleans, rewrites, summarizes, or paraphrases transcript text.
+17. Provider-specific logic lives only in `js/transcript/providers/adapters/`. The editor and UI know nothing about Supadata, credentials formats, or response shapes.
 
 ## Not implemented on purpose (later stages)
 
-Real transcript providers (Supadata, youtube-transcript-api, or any other), automatic provider fallback, transcript download or generation, speech-to-text, API keys, YouTube API / IFrame Player API, metadata fetching, embedded video player, playback controls, timestamp seeking, transcript/video sync, POI generation, event reconciliation, AI providers, clip generation or ranking, persistence (localStorage / IndexedDB / backend), database, authentication, cloud storage, payments, Discord integration, and platforms other than YouTube.
+Additional real providers (youtube-transcript-api or others), automatic provider fallback, local speech-to-text, TXT/SRT/VTT parsing, validation checks, chunking, YouTube API / IFrame Player API, metadata fetching, embedded video player, playback controls, timestamp seeking, transcript/video sync, POI generation, event reconciliation, AI providers, clip generation or ranking, persistence (localStorage / IndexedDB / backend), database, authentication, cloud storage, payments, Discord integration, and platforms other than YouTube.
 
 ## Future video + transcript workflow
 
