@@ -1,188 +1,685 @@
-# ClipNexus
+ClipNexus
 
-## Project
+Modular, provider-agnostic VOD transcript analysis and clip intelligence pipeline.
 
-ClipNexus is a modular web application for analyzing long-form VOD transcripts. It will extract evidence-supported Points of Interest (POIs), identify event arcs, preserve context and source limitations, and help a human operator build short-form clip candidates.
+ClipNexus is being built as an evidence-first system for turning long-form VODs into structured, reviewable information that can eventually feed a short-form video editing workflow.
 
-The AI layer will **discover, describe, preserve, and trace** evidence. It will **not** guess, rank, or decide which clips the human should select. Final selection always happens in human review.
+The project is designed around a strict separation between source data, derived analysis, clip specifications, and video editing.
 
-## Stages
+«VOD → Transcript → Evidence → POIs → Events → ClipSpec → Editing»
 
-| Stage | Scope | Status |
-|---|---|---|
-| Stage 1 | Frontend application shell (layout, hash navigation, upload control) | **Complete** |
-| Stage 1.5 | Canonical transcript architecture (formats, model, parser dispatch, validator shape) | **Complete** |
-| Stage 1.6 | Project + video foundation (URL → video identity) | **Complete** |
-| Stage 1.7 | Hardening + architecture freeze (start hint, safe replace, alignment state) | **Complete** |
-| Stage 2A | Transcript acquisition architecture (provider registry, manual switching, provenance) | **Complete** |
-| Stage 2B | First real transcript provider (Supadata) + JSON parser | **Complete** |
-| Stage 3+ | TXT/SRT/VTT parsing, validation, chunking, AI analysis, POIs, clips | Not started |
+The goal is not to have AI decide what content is “viral.”
+The goal is to build a reliable pipeline that preserves evidence, uncertainty, provenance, and human control.
 
-Stages 1.5–1.7 set up the canonical architecture: project, video identity, and transcript model. Stage 2A added the provider architecture, with no network access. Stage 2B connects the first real provider through that architecture without changing its shape: **Supadata**, using the user's own API key.
+---
 
-### What exists today
+Current Status
 
-| Area | Status |
-|---|---|
-| App shell, navigation, upload | IMPLEMENTED |
-| Video URL → identity (YouTube) | IMPLEMENTED |
-| Canonical transcript / project model | IMPLEMENTED |
-| Provider architecture (registry, contract, errors, switching, provenance) | IMPLEMENTED |
-| Supadata transcript provider (YouTube, native / generated / auto, language) | IMPLEMENTED |
-| JSON transcript parser (used by Supadata results and `.json` imports) | IMPLEMENTED |
-| youtube-transcript-api provider | ARCHITECTURE ESTABLISHED (placeholder; needs a Python helper/backend) |
-| TXT / SRT / VTT parsers | ARCHITECTURE ESTABLISHED (placeholders, 0 segments) |
-| Validator, chunker | ARCHITECTURE ESTABLISHED (no checks run, no chunks) |
-| Persistence | ARCHITECTURE ESTABLISHED (documented boundary, nothing stored) |
-| Video metadata, player, seeking | PLANNED |
-| AI analysis | PLANNED |
-| POIs / event reconciliation | PLANNED |
-| ClipSpec | PLANNED |
-| Clip editor | FUTURE |
+Development stage: Stage 2B complete — Stage 3 next
 
-Honest scope:
-- **Get Transcript works only with Supadata, and only when you enter your own Supadata API key.** Without a key, the button stays disabled and nothing is sent.
-- **Only JSON is parsed.** Imported `.txt`, `.srt`, and `.vtt` files are stored and shown as raw text with 0 segments.
-- **Pasting a video URL only identifies the video.** It does not fetch the title, thumbnail, or duration, and it does not embed or play the video.
-- **Nothing analyzes the transcript yet.** There are no POIs, events, clip candidates, rankings, or scores.
+Stage| Status| Description
+Stage 1| ✅ Complete| Frontend shell and application structure
+Stage 1.5| ✅ Complete| Canonical transcript/project architecture
+Stage 1.6| ✅ Complete| Transcript validation and data integrity
+Stage 1.7| ✅ Complete| Architecture hardening and regression testing
+Stage 2A| ✅ Complete| Provider/acquisition architecture
+Stage 2B| ✅ Complete| Supadata YouTube transcript provider
+Stage 2C| 🔨 Next| Transcript chunking and export workflow
+Stage 3| ⏳ Planned| Evidence and transcript analysis
+Stage 4| ⏳ Planned| POI extraction and event reconciliation
+Stage 5| ⏳ Planned| ClipSpec generation
+Future| ⏳ Planned| ClipNexus editing/rendering engine
 
-## Current capabilities
+The current application already has a functioning canonical transcript pipeline and a real YouTube transcript provider.
 
-- Modular frontend (HTML, CSS, vanilla JavaScript ES modules, no build step)
-- Client-side hash navigation (`#dashboard`, `#transcripts`, `#pois`, `#events`, `#clips`, `#analysis`, `#settings`)
-- Video URL input: YouTube links are resolved locally to a video identity (platform, video ID, canonical URL)
-- YouTube `?t=` / `#t=` / embed `start=` kept as a separate, unverified start-position hint
-- Inline confirmation before a different video replaces a project that holds a transcript
-- Transcripts page shows the linked video (platform, ID, title status, source, start hint, alignment)
-- Transcript provider selection (provider, language, acquisition method) driven by a central registry, with honest status labels (Available / Needs API key / Not implemented)
-- Real transcript retrieval from Supadata (YouTube) with a user-supplied, in-memory API key
-- JSON transcript parsing into canonical segments (raw timing values kept alongside seconds)
-- Parsed-segment preview (first 20 segments; unknown times shown as a status, never 0)
-- Standardized acquisition errors with manual provider switching ("Try Again" / "Try With …")
-- Provenance on every transcript: imported file vs. provider (provider, method, native/generated, language, retrieval time, source id, video)
-- A frozen `Project` in state that links the video and the transcript
-- Transcript file selection for all supported formats
-- Canonical, frozen `TranscriptDocument` stored inside the project
-- Raw transcript preview (first 30 lines, rendered as plain text)
-- Processing-layer status (parse, segments, validation, issues, chunks)
-- User-facing errors kept separate from console diagnostics
-- Browser-console self-tests (`vodAnalyzer.runSelfTests()`)
-- Responsive layout (sidebar on desktop, scrollable strip on mobile)
+---
 
-## Supported formats
+What Is ClipNexus?
 
-Defined once in `js/transcript/formats.js`. The upload control's `accept` list, file-type checks, and parser dispatch all read from it.
+ClipNexus is intended to become a modular system for analyzing long-form video content.
 
-| Id | Extension | Timestamps | End times | Speakers |
-|---|---|---|---|---|
-| `txt` | `.txt` | optional | no | optional |
-| `srt` | `.srt` | required | yes | optional |
-| `vtt` | `.vtt` | required | yes | optional (`<v>` tags) |
-| `json` | `.json` | optional | optional | optional |
+Instead of tightly coupling transcript acquisition, AI analysis, and video editing together, ClipNexus treats each layer as a separate system with defined contracts.
 
-Stage 1.5 picks the format by file extension only. Content-based detection is a later stage.
+                    ┌──────────────────┐
+                    │       VOD        │
+                    └────────┬─────────┘
+                             │
+                             ▼
+                 ┌───────────────────────┐
+                 │ Transcript Acquisition│
+                 │   Provider Layer      │
+                 └───────────┬───────────┘
+                             │
+                             ▼
+                 ┌───────────────────────┐
+                 │ TranscriptDocument    │
+                 │ Canonical Data Model  │
+                 └───────────┬───────────┘
+                             │
+                    ┌────────┴────────┐
+                    ▼                 ▼
+              Validation          Chunking
+                    │                 │
+                    └────────┬────────┘
+                             ▼
+                 ┌───────────────────────┐
+                 │ Evidence / AI Analysis│
+                 └───────────┬───────────┘
+                             │
+                             ▼
+                 ┌───────────────────────┐
+                 │        POIs           │
+                 │ Points of Interest    │
+                 └───────────┬───────────┘
+                             │
+                             ▼
+                 ┌───────────────────────┐
+                 │ Event Reconciliation  │
+                 └───────────┬───────────┘
+                             │
+                             ▼
+                 ┌───────────────────────┐
+                 │       ClipSpec        │
+                 └───────────┬───────────┘
+                             │
+                             ▼
+                 ┌───────────────────────┐
+                 │ Future Editing Engine │
+                 └───────────┬───────────┘
+                             │
+                             ▼
+                       Rendered Short
 
-Only `json` is parsed today (Stage 2B). It accepts an array of records or `{ "segments": [...] }`. Each record has `text` plus optional timing, given either in seconds (`start`, `end`, `duration`; numbers, numeric strings, or clock strings like `01:02.5`) or in milliseconds (`startMs`, `endMs`, `durationMs`). Optional `speaker` and `id` fields are also read. The raw value is kept exactly as written. A record that uses both second and millisecond keys for the same value is marked `ambiguous`. An end time computed from start + duration is marked `derived`. Records without text are skipped and noted. If no record is usable, parsing fails. `txt`, `srt`, and `vtt` are still placeholders.
+The important boundary is:
 
-## Canonical transcript model
+Analyzer
+   │
+   ▼
+ClipSpec
+   │
+   ▼
+Future Editing Engine
 
-Defined in `js/transcript/model.js` (schema version 2; v2 added `acquisition`).
+The editing engine should not need to understand how transcripts were acquired or how the analysis was performed.
 
-```js
-TranscriptDocument {
-    schemaVersion: 2,
-    id: "tx-…",
+---
 
-    acquisition: {            // SOURCE PROVENANCE (Stage 2A) — see "Transcript acquisition"
-        type: "file" | "provider" | "unknown",
-        providerId, providerName, method, generated, language,
-        requestedLanguage, requestedMethod, retrievedAt, sourceId,
-        video: { platform, videoId } | null
-    },
+Core Design Principles
 
-    source: {                 // SOURCE: content facts (filename/lastModified null for providers)
-        filename, format, size, lastModified,
-        encoding: "utf-8", loadedAt
-    },
+1. Provider Agnostic
 
-    rawText: "…",             // SOURCE EVIDENCE: exact file contents, never modified
+Transcript acquisition is isolated behind provider interfaces.
 
-    parse: {                  // DERIVED: parser layer
-        status: "pending" | "not_implemented" | "complete" | "failed",
-        parser: "srt",
-        notes: []
-    },
+The rest of the application should not need to know whether a transcript came from:
 
-    segments: [Segment],      // DERIVED: parsed/normalized layer
+- Supadata
+- YouTube captions
+- another API
+- a future backend service
+- an imported file
+- a local processing pipeline
 
-    validation: {             // DERIVED: observations, never corrections
-        status: "unvalidated" | "not_implemented" | "passed" | "issues_found",
-        validatedAt, checks: [], issues: [ValidationIssue]
-    },
+Provider-specific behavior belongs inside the provider adapter.
 
-    chunks: [],               // DERIVED: analysis windows (reference segment ids)
+---
 
-    processing: { parsed, validated, chunked }
-}
+2. One Canonical Transcript Model
 
-Segment {
-    id: "seg-000123",         // deterministic: same file → same ids
-    index: 123,
-    source: {                 // PROVENANCE
-        format: "srt",
-        sequence: 123,        // order in the source file
-        cueId: "124",         // source's own identifier, verbatim
-        lines:   { start, end },   // 1-based lines in rawText
-        offsets: { start, end }    // character range in rawText
-    },
-    start: { raw: "01:23:45,500", seconds: 5025.5, status: "parsed" },
-    end:   { raw: null,           seconds: null,   status: "missing" },
-    speaker: { raw: "STREAMER", value: "Streamer", source: "explicit" | "inferred" | "unknown" },
-    text: "exactly as in source",
-    derived: {}               // future normalizer output; never overwrites the above
-}
+All transcript sources are normalized into a shared:
 
-ValidationIssue {
-    id: "issue-000000",
-    type: "timestamp_reset",  // see ISSUE_TYPES in validator.js
-    severity: "info" | "warning" | "error",
-    startSeconds, endSeconds,
-    segmentIds: ["seg-000123", "seg-000124"],
-    message: "…",
-    evidence: "short verbatim excerpt",
-    source: { format: "srt", sequence: 123 }
-}
-```
+TranscriptDocument
 
-Timestamp `status` values: `parsed`, `missing`, `malformed`, `ambiguous`, and `derived` (added in 2B for a value computed from other parsed values, such as end = start + duration, with `raw: null`). Segments may also carry an optional `duration` timestamp. If the source gave none, it is `missing`.
+This is the application's source of truth.
 
-Planned issue types: `timestamp_gap`, `timestamp_large_gap`, `timestamp_overlap`, `timestamp_reset`, `timestamp_jump`, `timestamp_malformed`, `timestamp_missing`, `timestamp_duplicate`, `speaker_missing`, `order_suspicious`, `segment_duplicate`, `segment_empty`, `section_missing`, `quality_concern`.
+Provider responses, imported files, and future acquisition methods should flow through the same canonical model.
 
-## Project model (Stage 1.6)
+Provider/File
+     │
+     ▼
+Parser / Adapter
+     │
+     ▼
+TranscriptDocument
+     │
+     ├── Validation
+     ├── Chunking
+     ├── Analysis
+     └── Export
 
-Defined in `js/core/project.js`. The project is the one container that will eventually connect everything:
+No feature should create a competing transcript representation unless there is a clearly defined architectural reason.
 
-```
-VIDEO → TRANSCRIPT → ANALYSIS → POIs → EVENTS → CLIPS
-```
+---
 
-```js
-Project {
-  schemaVersion: 1,
-  id: "project-<uuid>",
-  createdAt, updatedAt,           // ISO strings
-  video: Video | null,            // see below
-  transcript: TranscriptDocument | null,   // stored by reference, unchanged
-  alignment: {                    // see "Time alignment" below
-    status: "unverified", method: null, evidence: [],
-    offsetSeconds: null, verifiedAt: null
-  },
-  analysis: { status: "not_implemented" },   // reserved
-  pois: [], events: [], clips: []            // reserved
-}
-```
+3. Preserve Evidence
 
-- Projects are deep-frozen. Every change (`withTranscript`, `applyVideoIdentity`) returns a **new** project.
+ClipNexus distinguishes between information that came directly from the source and information derived later.
+
+Examples:
+
+SOURCE
+├── Original transcript text
+├── Source timestamps
+├── Speaker attribution
+├── Provider
+├── Language
+└── Acquisition metadata
+
+DERIVED
+├── Normalized timestamps
+├── Validation results
+├── Chunks
+├── POIs
+├── Events
+├── Analysis
+└── ClipSpec
+
+Derived information should never silently overwrite source evidence.
+
+---
+
+4. Preserve Uncertainty
+
+Not every transcript has reliable timestamps or speaker attribution.
+
+ClipNexus therefore tracks uncertainty instead of pretending that imperfect information is authoritative.
+
+For example:
+
+timestamp_reliability = LOW
+speaker_attribution   = MEDIUM
+transcript_quality    = MEDIUM
+
+The system should preserve these limitations so downstream analysis can account for them.
+
+---
+
+5. AI Is an Analyzer, Not the Final Decision Maker
+
+The future analysis layer is designed to:
+
+- identify observable evidence
+- describe events
+- extract potential POIs
+- preserve context
+- identify missing information
+- identify uncertainty
+- produce structured data
+
+It should not:
+
+- invent dialogue
+- invent context
+- fabricate events
+- assign unsupported meaning
+- predict virality
+- rank clips
+- decide what the human must publish
+
+The human remains the final editor and selector.
+
+---
+
+Transcript Pipeline
+
+The current pipeline supports multiple transcript entry points.
+
+YouTube URL
+    │
+    ▼
+Video Resolver
+    │
+    ▼
+Transcript Provider
+    │
+    ▼
+Provider Adapter
+    │
+    ▼
+TranscriptDocument
+
+Or:
+
+TXT / JSON / SRT / VTT
+        │
+        ▼
+     Parser
+        │
+        ▼
+TranscriptDocument
+
+All paths converge on the same canonical document.
+
+---
+
+Current Provider
+
+Supadata
+
+Supadata is currently the first production transcript provider.
+
+The provider layer supports:
+
+- YouTube transcript acquisition
+- native captions
+- generated/automatic captions
+- language selection
+- runtime API-key entry
+- provider-specific error normalization
+- acquisition status tracking
+- provenance recording
+
+API credentials are held in memory and are not intended to be persisted in browser storage.
+
+Provider-specific response data is normalized at the adapter boundary and does not leak into the canonical application model.
+
+---
+
+Transcript Processing
+
+The transcript pipeline is designed to support:
+
+- parsing
+- validation
+- timestamp normalization
+- speaker metadata
+- deterministic segment IDs
+- chunking
+- transcript preview
+- transcript export
+- chunk export
+- provenance
+- processing metadata
+
+Chunking is treated as derived transcript data, not as a second transcript model.
+
+TranscriptDocument
+       │
+       ▼
+   Segments
+       │
+       ▼
+    Chunker
+       │
+       ▼
+     Chunks
+
+The original transcript remains intact.
+
+---
+
+Analysis Pipeline
+
+The planned analysis layer will consume the canonical transcript rather than raw provider responses.
+
+TranscriptDocument
+        │
+        ▼
+   Evidence Layer
+        │
+        ▼
+     Analysis
+        │
+        ▼
+      POIs
+        │
+        ▼
+ Event Reconciliation
+        │
+        ▼
+    ClipSpec
+
+This separation allows the analysis system to evolve independently from transcript acquisition.
+
+---
+
+Points of Interest
+
+A POI represents an observable section of source material that may deserve further review.
+
+A future POI structure is expected to preserve information such as:
+
+- timestamp boundaries
+- transcript evidence
+- speaker information when available
+- topic
+- event type
+- context requirements
+- missing information
+- source limitations
+- relevant quotes
+- payoff/ending structure
+- media dependencies
+
+POIs are candidates for human review, not automatic publishing decisions.
+
+---
+
+ClipSpec
+
+The future "ClipSpec" layer will act as the contract between analysis and video editing.
+
+Conceptually:
+
+POI / Event Analysis
+        │
+        ▼
+     ClipSpec
+        │
+        ├── Source video
+        ├── Start time
+        ├── End time
+        ├── Context requirements
+        ├── Transcript evidence
+        └── Editing metadata
+              │
+              ▼
+       Future Editor
+
+The editing engine should consume "ClipSpec" objects without needing to understand the internal analysis pipeline.
+
+This is a deliberate architectural boundary.
+
+---
+
+Future ClipNexus Editing Engine
+
+Video editing is intentionally separated from the current transcript system.
+
+The long-term goal is to allow ClipNexus to eventually handle tasks such as:
+
+- source video retrieval
+- clip trimming
+- vertical formatting
+- captions
+- subtitle styling
+- overlays
+- audio processing
+- intro/outro elements
+- automated rendering
+- export for Shorts/TikTok/Reels
+
+These capabilities are not part of the current transcript architecture.
+
+The current priority is building a reliable information pipeline before adding video processing complexity.
+
+---
+
+Architecture
+
+Current high-level structure:
+
+Application
+│
+├── UI
+│
+├── Core
+│   ├── Project
+│   ├── State
+│   └── Development Tools
+│
+├── Transcript
+│   ├── Model
+│   ├── Parsers
+│   ├── Pipeline
+│   ├── Validation
+│   ├── Chunking
+│   ├── Formats
+│   └── Providers
+│       ├── Acquisition
+│       ├── Credentials
+│       └── Adapters
+│
+├── Analysis
+│   └── Future
+│
+├── POIs
+│   └── Future
+│
+├── Events
+│   └── Future
+│
+└── Clips
+    └── Future ClipSpec / Editor
+
+The architecture is intentionally modular so individual systems can be replaced without rebuilding the entire application.
+
+---
+
+Testing
+
+ClipNexus uses an internal self-test/development test system to protect architectural contracts.
+
+The Stage 2B implementation currently has:
+
+108 / 108 tests passing
+
+The test suite covers areas including:
+
+- transcript model behavior
+- project state
+- parsing
+- acquisition
+- provider behavior
+- error normalization
+- stale acquisition attempts
+- provenance
+- immutability
+- security boundaries
+- regression behavior
+
+Future features should extend the existing tests rather than bypassing them.
+
+---
+
+Security & Privacy
+
+The application follows a minimal-credential architecture.
+
+For the current Supadata integration:
+
+- API keys are entered at runtime
+- credentials are kept in memory
+- credentials are not intentionally persisted in localStorage
+- provider responses are normalized before entering application state
+- provider-specific secrets should not appear in transcript exports
+- provider credentials should not be included in logs or debugging output
+- external network access is limited to the required provider endpoint
+
+A shared/public deployment would require additional backend security architecture before exposing provider credentials through a common frontend.
+
+---
+
+Technology
+
+Current frontend architecture:
+
+- Vanilla HTML
+- CSS
+- JavaScript ES modules
+- Browser-based application
+- No frontend framework dependency
+
+The architecture intentionally favors small, replaceable modules over a large framework-specific application structure.
+
+Future backend and editing infrastructure may use different technologies where appropriate.
+
+---
+
+Development Philosophy
+
+ClipNexus is being built incrementally.
+
+The project does not attempt to build the entire AI clipping platform at once.
+
+Each stage establishes contracts that later stages can build upon.
+
+FOUNDATION
+    │
+    ├── Project model
+    ├── Transcript model
+    ├── Validation
+    └── Provider architecture
+             │
+             ▼
+DATA PIPELINE
+    │
+    ├── Acquisition
+    ├── Parsing
+    ├── Chunking
+    └── Export
+             │
+             ▼
+INTELLIGENCE
+    │
+    ├── Evidence analysis
+    ├── POIs
+    └── Event reconciliation
+             │
+             ▼
+CLIP DEFINITION
+    │
+    └── ClipSpec
+             │
+             ▼
+MEDIA
+    │
+    └── Future editing engine
+
+The rule is simple:
+
+«Build the data contracts before building the automation that depends on them.»
+
+---
+
+Current Limitations
+
+The project is still under active development.
+
+Current/future limitations include:
+
+- additional transcript parsers are still being developed
+- some provider integrations are not implemented
+- "youtube-transcript-api" requires backend infrastructure
+- browser-based provider access is primarily intended for individual use
+- long VODs may exceed provider/request time limits
+- transcript quality depends on the source/provider
+- timestamps may be incomplete or unreliable
+- speaker attribution may be unavailable
+- AI analysis has not yet been integrated into the application pipeline
+- POI extraction is not yet implemented
+- ClipSpec is not yet implemented
+- video editing/rendering is not yet implemented
+
+---
+
+Roadmap
+
+Phase 1 — Foundation
+
+- [x] Frontend shell
+- [x] Project model
+- [x] Canonical transcript model
+- [x] Validation architecture
+- [x] Development test infrastructure
+
+Phase 2 — Transcript Infrastructure
+
+- [x] Provider architecture
+- [x] Acquisition state management
+- [x] Supadata provider
+- [x] Provider error normalization
+- [x] Provenance tracking
+- [ ] Transcript chunking
+- [ ] Transcript export
+- [ ] Chunk export
+- [ ] Additional transcript formats/providers
+
+Phase 3 — Evidence Analysis
+
+- [ ] Evidence model
+- [ ] Analysis contracts
+- [ ] Context extraction
+- [ ] Source limitation reporting
+- [ ] Structured AI analysis
+
+Phase 4 — Clip Intelligence
+
+- [ ] POI extraction
+- [ ] Event reconciliation
+- [ ] Context relationships
+- [ ] Media dependency tracking
+
+Phase 5 — Clip Specification
+
+- [ ] ClipSpec schema
+- [ ] Clip boundaries
+- [ ] Evidence references
+- [ ] Editing instructions
+- [ ] Editor handoff contract
+
+Future — ClipNexus Editing Engine
+
+- [ ] Video ingestion
+- [ ] Clip rendering
+- [ ] Captions
+- [ ] Vertical formatting
+- [ ] Audio processing
+- [ ] Overlays
+- [ ] Automated export
+
+---
+
+Repository Status
+
+ClipNexus is an active development project.
+
+Architecture and contracts are expected to evolve as each stage is implemented, but previously established contracts should remain backward-compatible whenever practical.
+
+Changes that affect architectural boundaries should be documented and tested.
+
+---
+
+Project Direction
+
+ClipNexus is ultimately intended to connect content analysis with deterministic media production without turning the system into an opaque black box.
+
+The long-term architecture is:
+
+                 CLIPNEXUS
+
+       ┌─────────────────────────┐
+       │       SOURCE VOD        │
+       └────────────┬────────────┘
+                    │
+                    ▼
+       ┌─────────────────────────┐
+       │   TRANSCRIPT PIPELINE   │
+       └────────────┬────────────┘
+                    │
+                    ▼
+       ┌─────────────────────────┐
+       │    EVIDENCE ANALYSIS    │
+       └────────────┬────────────┘
+                    │
+                    ▼
+       ┌─────────────────────────┐
+       │       POI / EVENTS      │
+       └────────────┬────────────┘
+                    │
+                    ▼
+       ┌─────────────────────────┐
+       │        ClipSpec         │
+       └────────────┬────────────┘
+                    │
+                    ▼
+       ┌─────────────────────────┐
+       │   FUTURE VIDEO ENGINE   │
+       └────────────┬────────────┘
+                    │
+                    ▼
+              SHORT-FORM VIDEO
+
+ClipNexus is being built one contract at a time.t`, `applyVideoIdentity`) returns a **new** project.
 - Lifecycle: no project → project created → video identified → transcript attached. A transcript can be uploaded before or after a URL is entered.
 - Entering the **same** video again (any URL form) never creates a new project or drops the transcript. If the URL has a new time value, only `video.startPosition` changes. A URL with no time value leaves the existing hint alone.
 - Entering a **different** video starts a new project, because the old transcript belonged to the other video. If the current project has a transcript, an inline confirmation (**Cancel** / **Replace Project**) appears first. Cancel leaves the current project exactly as it was, as the same object. Transcripts are never merged or carried over to another video.
