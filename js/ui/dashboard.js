@@ -8,6 +8,7 @@
 
 import { createElement, createDetailList } from "./dom.js";
 import { createVideoUrlForm, createProjectCard } from "./project-panel.js";
+import { createProvenanceRows } from "./provenance.js";
 
 export function formatFileSize(bytes) {
     if (bytes < 1024) return `${bytes} B`;
@@ -28,18 +29,26 @@ function createStatusCard() {
     const card = createElement("article", "card");
     card.append(
         createElement("span", "tag", "Current stage"),
-        createElement("h2", "card-title", "Stage 1.7 — Project & Video Foundation"),
+        createElement("h2", "card-title", "Stage 2A — Transcript Acquisition Architecture"),
         createElement(
             "p",
             "card-body",
             "Available now: identify a YouTube video from its URL (including a start-time hint), " +
-            "load a transcript file as raw source evidence, and link both in one in-memory project."
+            "import a transcript file as raw source evidence, and choose a transcript provider, " +
+            "language, and acquisition method on the Transcripts page."
         ),
         createElement(
             "p",
             "card-body",
-            "Not built yet: transcript parsing, transcript download, video metadata, an embedded " +
-            "player, AI analysis, POIs, and clips. Projects are lost when the page reloads."
+            "Providers are architecture only: none is connected, so no transcript is retrieved from " +
+            "the internet yet. Also not built: transcript parsing, video metadata, an embedded player, " +
+            "AI analysis, POIs, and clips. Projects are lost when the page reloads."
+        ),
+        createElement(
+            "p",
+            "field-hint",
+            "Completed: Stage 1.5 — Transcript Data Foundation · Stage 1.6 — Project & Video Foundation · " +
+            "Stage 1.7 — Project & Video Foundation Hardening"
         )
     );
     return card;
@@ -53,8 +62,9 @@ export function createTranscriptSummaryCard(transcript, extraRows = []) {
     card.append(
         createElement("h2", "card-title", "Loaded transcript"),
         createDetailList([
-            ["Filename", transcript.source.filename],
-            ["File size", formatFileSize(transcript.source.size)],
+            ...createProvenanceRows(transcript.acquisition),
+            ...(transcript.source.filename !== null ? [["Filename", transcript.source.filename]] : []),
+            [transcript.source.filename !== null ? "File size" : "Size", formatFileSize(transcript.source.size)],
             ...extraRows
         ])
     );

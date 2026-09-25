@@ -14,11 +14,13 @@ The AI layer will **discover, describe, preserve, and trace** evidence. It will 
 | Stage 1.5 | Transcript architecture foundation | **Complete** |
 | Stage 1.6 | Project + video foundation (URL → video identity) | **Complete** |
 | Stage 1.7 | Hardening + architecture freeze (start hint, safe replace, alignment state) | **Complete** |
+| Stage 2A | Transcript acquisition architecture (provider registry, manual switching, provenance) | **Complete** (architecture only; no provider connected) |
 | Stage 2 | Transcript parsing, normalization, validation, and chunking | Not yet implemented |
 
-Nothing after Stage 1.7 exists yet. Stage 1.7 is the architecture freeze before transcript acquisition begins (see [Frozen contracts](#frozen-contracts-after-stage-17)).
+Nothing after Stage 2A exists yet. **Stage 2A establishes the transcript-acquisition architecture but does not retrieve transcripts from any external service.** The two listed providers are placeholders that answer `NOT_IMPLEMENTED` (see [Transcript acquisition](#transcript-acquisition-stage-2a)).
 - **No format is actually parsed.** Uploaded files are loaded, stored, and shown as raw text, but every transcript currently has 0 segments, and validation runs no checks.
 - **Pasting a video URL only identifies the video.** It does **not** fetch the title, thumbnail, or duration, retrieve or generate transcripts, or embed or play the video. Nothing is sent over the network.
+- **"Get Transcript" does not reach the internet.** Every built-in provider is a placeholder, so it always reports "not connected yet". The only transcripts that can currently exist come from file import (or, for UI preview, from clearly named console mocks).
 
 ## Current capabilities
 
@@ -28,6 +30,9 @@ Nothing after Stage 1.7 exists yet. Stage 1.7 is the architecture freeze before 
 - YouTube `?t=` / `#t=` / embed `start=` kept as a separate, unverified start-position hint
 - Inline confirmation before a different video replaces a project that holds a transcript
 - Transcripts page shows the linked video (platform, ID, title status, source, start hint, alignment)
+- Transcript provider selection (provider, language, acquisition method) driven by a central registry
+- Standardized acquisition errors with manual provider switching ("Try Again" / "Try With …")
+- Provenance on every transcript: imported file vs. provider (provider, method, native/generated, language, retrieval time, source id, video)
 - A frozen `Project` in state that links the video and the transcript
 - Transcript file selection for all supported formats
 - Canonical, frozen `TranscriptDocument` stored inside the project
@@ -52,14 +57,21 @@ Stage 1.5 picks the format by file extension only. Content-based detection is St
 
 ## Canonical transcript model
 
-Defined in `js/transcript/model.js` (schema version 1).
+Defined in `js/transcript/model.js` (schema version 2; v2 added `acquisition`).
 
 ```js
 TranscriptDocument {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: "tx-…",
 
-    source: {                 // SOURCE: file facts
+    acquisition: {            // SOURCE PROVENANCE (Stage 2A) — see "Transcript acquisition"
+        type: "file" | "provider" | "unknown",
+        providerId, providerName, method, generated, language,
+        requestedLanguage, requestedMethod, retrievedAt, sourceId,
+        video: { platform, videoId } | null
+    },
+
+    source: {                 // SOURCE: content facts (filename/lastModified null for providers)
         filename, format, size, lastModified,
         encoding: "utf-8", loadedAt
     },
@@ -229,6 +241,155 @@ Start-position hint: `t` (query or `#t=` fragment) and embed `start` accept `120
 
 Create `js/video/platforms/<name>.js` exporting `platformId`, `label`, `matchesHost(hostname)`, `extractVideoId(url)`, `buildCanonicalUrl(id)`, and optionally `extractStartPosition(url)`, then add it to `platformAdapters` in the resolver. The project model doesn't change. Twitch and other platforms are **not** implemented.
 
+## Transcript acquisition (Stage 2A)
+
+Stage 2A adds the **architecture** for getting transcripts from interchangeable providers. It does **not** retrieve anything from an external service. No provider API, scraping, speech-to-text, API key, backend, or network call exists.
+
+```
+normalized VIDEO (project.video, Stage 1.6/1.7)
+      ↓
+TRANSCRIPT PROVIDER MANAGER   js/transcript/providers/manager.js
+      ↓  one attempt, one provider — the one the user chose
+┌──────────────┬────────────────────────┬──────────────┐
+│ supadata     │ youtube-transcript-api │ future …     │   adapters/*.js
+└──────────────┴────────────────────────┴──────────────┘
+      ↓  normalizeAdapterResponse()  (provider boundary)
+ACQUISITION RESULT  → provenance → shared pipeline (parser → validator) → canonical TranscriptDocument
+```
+
+### Provider abstraction
+
+Each adapter (`js/transcript/providers/adapters/<name>.js`) exports a `provider` built with `defineProvider()`:
+
+```js
+{
+  id: "supadata", name: "Supadata", description: "…",
+  status: "available" | "not_implemented",
+  enabled: true,                          // false = listed but cannot be selected
+  capabilities: {
+    platforms: ["youtube"],               // omitted flags are false — nothing assumed
+    nativeCaptions: true, generatedTranscript: true, languageSelection: true
+  },
+  getTranscript(video, options) → Promise<AdapterResponse>
+}
+```
+
+- `video` is `{ platform, videoId, canonicalUrl }` (frozen), taken from the resolved project video. Adapters never receive the raw user URL or the start hint, and they never resolve URLs themselves.
+- `options` is `{ language: string | null, method: "any" | "native" | "generated" }`. `language: null` means "provider default". English is never assumed.
+- An adapter returns `{ success: true, transcript: { rawText, format }, source: { method, language, sourceId } }` or `{ success: false, error: { code, detail } }`. `rawText` must be the transcript text exactly as delivered, in a format the parser registry supports (`txt`, `srt`, `vtt`, `json`). Everything else an adapter returns is dropped at the boundary.
+
+Built-in adapters: `supadata` and `youtube-transcript-api`. Both are **placeholders** (`status: "not_implemented"`). They return `NOT_IMPLEMENTED` and make no requests. Their capabilities are the intended ones and must be re-checked when each is implemented. `adapters/mock.js` holds deterministic fakes used by the self-tests. It is never registered by default.
+
+### Provider registry
+
+`js/transcript/providers/registry.js` → `createProviderRegistry()`. The app's instance is in `default-providers.js`.
+
+- `register(provider)`: invalid or duplicate providers throw (a programming error).
+- `get(id)`: `{ success, provider }`, or a controlled `PROVIDER_NOT_FOUND` error.
+- `getSelectable(id)`: like `get`, but a disabled provider gives `PROVIDER_DISABLED`.
+- `list()` / `listSelectable()`: frozen data-only descriptors (no functions). The UI builds its menus from these and names no provider itself.
+
+Adding a provider means writing one adapter file and adding it to `default-providers.js`. No UI or coordinator change is needed.
+
+### Acquisition result contract
+
+`acquireTranscript({ registry, providerId, video, options, timeoutMs })` always resolves (it never throws) to one frozen shape:
+
+```js
+// success
+{ success: true,
+  source: { providerId, providerName, method, generated, language,
+            requestedLanguage, requestedMethod, retrievedAt, sourceId,
+            video: { platform, videoId } },
+  payload: { rawText, format } }
+
+// failure
+{ success: false,
+  error: { code, message, retryable, providerId, detail } }
+```
+
+- `providerId`/`providerName` come from the registry, not the response, so an adapter cannot misattribute a transcript.
+- `retrievedAt` is the time the app received the response.
+- Request checks run **before** the adapter is called: provider exists and is enabled, a video is present, the platform is supported, the language code is valid, and the requested language/method is within the provider's capabilities.
+- An adapter that throws gives `PROVIDER_ERROR`. One that doesn't answer within `timeoutMs` (default 30 s) gives `PROVIDER_TIMEOUT`.
+- Applying a result is a separate pure step, `applyAcquisitionToProject(project, result, buildAcquiredTranscript)`. On failure it returns the **same project object**. A success for a different video than the project's is rejected.
+
+### Error vocabulary
+
+`js/transcript/providers/errors.js` is the only list. Every code has one fixed plain-language `message` and a `retryable` flag (true = trying the same provider again may help). Provider-supplied error text is untrusted, so it goes to `detail` (console only) and is never shown.
+
+| Code | Retryable | Meaning |
+|---|---|---|
+| `PROVIDER_UNAVAILABLE` | yes | Provider not reachable |
+| `AUTHENTICATION_FAILED` | no | Credentials rejected |
+| `RATE_LIMITED` | yes | Temporarily limited |
+| `VIDEO_UNAVAILABLE` | no | Private, removed, or region-locked video |
+| `TRANSCRIPT_UNAVAILABLE` | no | This provider has no transcript for the video |
+| `LANGUAGE_UNAVAILABLE` | no | Not available in the requested language |
+| `TRANSCRIPT_EMPTY` | no | Empty or whitespace-only transcript |
+| `PROVIDER_TIMEOUT` | yes | No answer in time |
+| `PROVIDER_ERROR` | yes | Provider failed / adapter threw |
+| `MALFORMED_RESPONSE` | yes | Response did not match the adapter contract |
+| `NOT_IMPLEMENTED` | no | Placeholder provider (all built-ins in Stage 2A) |
+| `UNKNOWN_ERROR` | yes | Anything unrecognized (original code kept in `detail`) |
+| `PROVIDER_NOT_FOUND` | no | App check: no such provider id |
+| `PROVIDER_DISABLED` | no | App check: provider disabled |
+| `UNSUPPORTED_VIDEO` | no | App check: provider doesn't support the platform |
+| `UNSUPPORTED_OPTION` | no | App check: language/method outside capabilities |
+| `INVALID_REQUEST` | no | App check: no video, bad language/method, or stale result |
+
+### Manual provider switching
+
+Provider failure is expected, not a special case. On the Transcripts page:
+
+1. Pick a **Transcript provider**, **Language**, and **Acquisition** method, then **Get Transcript**. The page shows "Retrieving transcript… Provider: X" while controls are disabled.
+2. On failure, a panel says "X could not retrieve this transcript." with the reason and code. It offers **Try Again** (only when retryable) and a **Try another provider** menu with **Try With Y**. It notes that an existing transcript was not changed.
+3. On success, the panel shows the provenance, and the "Loaded transcript" card shows it too.
+
+There is **no automatic fallback**. The manager calls exactly one provider per attempt, and a failed provider never triggers another. Provenance always names the provider that actually supplied the transcript. A future automatic mode (A → B → C) would be a separate, explicit feature built on the same manager.
+
+Switching providers never changes the project id or video identity. A successful acquisition replaces the transcript, resets alignment to `unverified`, and keeps the video and its start hint.
+
+### Attempt state
+
+`state.ui.transcriptAcquisition` (`acquisition-state.js`), separate from the project and the transcript:
+
+```js
+{ status: "idle" | "acquiring" | "success" | "error",
+  selection: { providerId, language, method },        // what the user picked
+  attempt: null | { id, providerId, providerName, language, method, projectId,
+                    startedAt, finishedAt, error, source } }
+```
+
+Changing the selection (including after an error) is how switching works. There is no separate "selecting" status, because the selection is always editable. The attempt resets when the project is replaced or a file is imported. A late result from an older attempt is ignored and never attached.
+
+### Transcript provenance
+
+Every `TranscriptDocument` has one `acquisition` record with the same shape for every source (see the canonical model):
+
+| | Imported file | Provider-acquired |
+|---|---|---|
+| `type` | `"file"` | `"provider"` |
+| `providerId` / `providerName` | `null` | registry id / name |
+| `method` / `generated` | `"unknown"` / `null` | `"native"`→`false`, `"generated"`→`true`, `"unknown"`→`null` |
+| `language` / `requestedLanguage` | `null` | reported / requested (`null` = default) |
+| `retrievedAt` | `null` (file time is `source.loadedAt`) | ISO time received |
+| `sourceId` | `null` | provider's own track/transcript id, or `null` |
+| `video` | `null` | `{ platform, videoId }` it was acquired for |
+| `source.filename` | file name | `null` |
+
+- `generated` is derived from `method`, so they can't disagree. Unknown is `null`, never `false`.
+- `acquisition.video` is an identity reference only. No video metadata is copied, and it is **not** alignment evidence.
+- `rawText` is stored once, exactly as delivered. No provider response object is stored anywhere.
+- File import and provider acquisition share one pipeline (`js/transcript/pipeline.js`: parser → validator → frozen document).
+
+### Future provider integration plan
+
+1. Implement one adapter at a time inside its own file: request, auth, and mapping of the provider's response and errors to the contract above. Set `status: "available"`.
+2. Credentials and network access will need a deliberate design (a user-run local helper or a backend). That's a later stage, and nothing in the UI or the manager should need to change.
+3. Real language lists can come from provider capabilities. The placeholder list in `js/transcript/languages.js` is replaced, not duplicated.
+4. Optional automatic fallback, if added, must be an explicit, visible mode that records each attempt.
+
 ## Provenance philosophy
 
 > Never silently replace source evidence with normalized or corrected data.
@@ -262,7 +423,7 @@ vod-analyzer/
 │   ├── layout.css             Header / sidebar / main grid, responsive rules
 │   └── components.css         Buttons, nav, cards, stats, raw preview
 └── js/
-    ├── app.js                 Coordinator: URL → resolver → project; file → parser → validator → project; state → render
+    ├── app.js                 Coordinator: URL → resolver → project; file / provider → pipeline → project; state → render
     ├── core/
     │   ├── state.js           get / set / subscribe store (route, project, ui)
     │   ├── router.js          Hash routing + route list
@@ -270,7 +431,8 @@ vod-analyzer/
     │   ├── ids.js             Random prefixed ids (project-…, tx-…)
     │   ├── project.js         Project model: video + transcript container, lifecycle
     │   ├── devtools.js        window.vodAnalyzer console helpers + self-tests
-    │   └── devtools-project-tests.js   Stage 1.6 + 1.7 self-tests
+    │   ├── devtools-project-tests.js   Stage 1.6 + 1.7 self-tests
+    │   └── devtools-provider-tests.js  Stage 2A self-tests (deterministic mocks)
     ├── video/
     │   ├── video-model.js     Video identity vs. metadata, metadata status
     │   ├── video-resolver.js  Platform-neutral URL → identity resolver
@@ -280,6 +442,19 @@ vod-analyzer/
     │   ├── formats.js         Single source of truth for supported formats
     │   ├── model.js           Canonical schema factories (document, segment, timestamp, speaker)
     │   ├── parser.js          Dispatcher: selects format module, builds frozen document
+    │   ├── pipeline.js        Shared path: raw text + provenance → parser → validator → frozen document
+    │   ├── languages.js       Language codes (null = provider default); placeholder option list
+    │   ├── providers/
+    │   │   ├── errors.js      Standardized acquisition error vocabulary
+    │   │   ├── provider.js    Provider contract, capabilities, normalization boundary
+    │   │   ├── registry.js    Central provider registry
+    │   │   ├── manager.js     Runs one attempt; applies results without harming the project
+    │   │   ├── acquisition-state.js  Attempt state (state.ui), separate from the transcript
+    │   │   ├── default-providers.js  The app's registry instance
+    │   │   └── adapters/
+    │   │       ├── supadata.js                Placeholder (NOT_IMPLEMENTED, no network)
+    │   │       ├── youtube-transcript-api.js  Placeholder (NOT_IMPLEMENTED, no network)
+    │   │       └── mock.js                    Deterministic test providers (never registered by default)
     │   ├── formats/
     │   │   ├── txt.js         Plain-text parser (placeholder + Stage 2 contract)
     │   │   ├── srt.js         SubRip parser (placeholder + Stage 2 contract)
@@ -292,7 +467,9 @@ vod-analyzer/
         ├── sidebar.js         Section navigation
         ├── dashboard.js       Dashboard view + shared transcript summary card
         ├── project-panel.js   Video URL form (+ inline replace confirmation), Project card, Linked video card
-        └── transcripts.js     Transcripts view (source details, layers, raw preview)
+        ├── acquisition-panel.js  Provider / language / method selection, failure + switching, success
+        ├── provenance.js      Provenance display rows (file vs. provider)
+        └── transcripts.js     Transcripts view (linked video, acquisition, source details, layers, raw preview)
 ```
 
 ## Running
@@ -304,7 +481,9 @@ No install or build step. Open `index.html` through any local static server. On 
 Open the browser console (Acode: enable "Show Console Toggler" in Preview settings) and run:
 
 ```js
-vodAnalyzer.runSelfTests()      // 51 architectural checks, printed as a table
+await vodAnalyzer.runSelfTests()   // 83 architectural checks, printed as a table
+vodAnalyzer.listProviders()        // registry descriptors
+vodAnalyzer.registerMockProviders() // optional UI preview: "Mock A (always fails)" + "Mock B (returns test data)"
 vodAnalyzer.inspectProject()    // the frozen Project (or null)
 vodAnalyzer.inspectTranscript() // the frozen TranscriptDocument in the project
 vodAnalyzer.resolveVideoUrl("https://youtu.be/dQw4w9WgXcQ")
@@ -354,10 +533,19 @@ The 15 Stage 1.7 checks cover:
 - the Transcripts page showing the linked video (with a hostile URL, and no `a`/`iframe`/`img` elements)
 - the dashboard status card
 
+The 32 Stage 2A checks use deterministic mock providers in local registries. They make no network calls and never touch the app's registry or state. They cover:
+- **Registry:** register/list, get by id, unknown id → `PROVIDER_NOT_FOUND`, disabled listed but not selectable (and never called), invalid/duplicate rejected, data-only frozen descriptors.
+- **Contract:** built-ins conform and are honest placeholders; placeholders return structured `NOT_IMPLEMENTED`; capabilities default to false; 11 malformed responses normalized; throw → `PROVIDER_ERROR`; hang → `PROVIDER_TIMEOUT`; provider-specific fields (and a spoofed provider id) never leak; adapters get only normalized video + options, with `language: null` by default.
+- **Errors:** all 12 standard codes (message, retryable, frozen); each adapter code maps to itself with provider text hidden; unknown → `UNKNOWN_ERROR`; request checks run before any provider call.
+- **Switching:** A fails → select B → B supplies the transcript, and provenance says B; any failure (all 12 codes, or a pipeline failure) leaves the existing transcript untouched; B is never called automatically; project id and video identity don't change; attempt state is separate and frozen and ignores stale results; a result for a different video is not attached.
+- **Provenance:** provider, method, language, requested values, generated flag, retrieval time, source id, and video are all recorded; native, generated, and unknown stay distinguishable; acquired `rawText` is stored exactly once; imported files are marked `file` with nulls for unknowns.
+- **UI:** the panel is built from the registry; the failure view offers Try Again (retryable only) and Try With another provider, with hostile names rendered as text; the success view and summary card show provenance; the dashboard status is honest.
+
 ## Privacy and security
 
 - Files are read locally with `File.text()` and kept in memory only.
 - No analytics, tracking, third-party scripts, or network requests. Video URLs are resolved locally and never fetched.
+- Transcript providers make no requests in Stage 2A. Provider names, errors, and provenance are rendered with `textContent`. Provider error text is never shown, only the fixed message for its code.
 - Video URL input is untrusted. It is parsed with `new URL()`, only `http(s)` is accepted, and it is displayed with `textContent`. No links, images, or iframes are created from it.
 - Transcript content is untrusted. It is rendered with `textContent` only and never with `innerHTML`, `eval`, or script execution.
 
@@ -370,7 +558,10 @@ The 15 Stage 1.7 checks cover:
 - `File.text()` always decodes as UTF-8 and drops a leading byte-order mark. Non-UTF-8 files (e.g. Windows-1252 SRTs) may show replacement characters.
 - One project (one video, one transcript) at a time, held in memory; it's gone after a page reload.
 - Video: identity only. Title, thumbnail, and duration are never fetched (`metadata.status` stays `unknown`).
-- No transcript retrieval from URLs, no embedded player, no playback, no seeking.
+- No transcript retrieval from URLs: every built-in provider is a placeholder returning `NOT_IMPLEMENTED`, and there are no API keys, network calls, or backend. No embedded player, no playback, no seeking.
+- Provider-acquired transcripts go through the same placeholder parser, so they also have 0 segments until Stage 2 parsing exists.
+- The language list is a fixed placeholder, not reported by providers.
+- A successful acquisition replaces an existing transcript without a separate confirmation (a failed one never changes it). The panel says so before you tap Get Transcript.
 - Only YouTube is recognized. YouTube ID validation is by shape (11 characters). The resolver cannot tell whether the video actually exists or is public.
 - The start-position hint is stored and shown only. Nothing uses it for playback yet, and it's never checked against the video's length.
 - Replace confirmation is inline and in-page. Navigating away while it's showing cancels it.
@@ -424,17 +615,40 @@ URL → VIDEO RESOLVER → VIDEO IDENTITY → METADATA ACQUISITION → TRANSCRIP
 
 The AI layer will discover, describe, trace, and preserve uncertainty. It will not rank, pick "best" clips, predict virality, or decide what to publish. The human is the final reviewer.
 
+## Architectural invariants (Stage 2A)
+
+1. Raw transcript data is preserved exactly as delivered or loaded (`rawText`, stored once).
+2. The canonical transcript model is provider-agnostic; no provider response object enters it.
+3. Provider responses are normalized at the provider boundary (`normalizeAdapterResponse`).
+4. Every transcript records where it came from (`acquisition`), including "imported file" and "unknown".
+5. Unknown is `null`/`"unknown"`, never `false`.
+6. Providers are listed and selected only through the registry; the UI names no provider.
+7. Adapters receive normalized video identity and never resolve URLs.
+8. The UI reads only standardized error codes and fixed messages, never provider-specific errors.
+9. No silent or automatic provider switching; one attempt calls one user-chosen provider.
+10. A failed acquisition never changes or destroys an existing transcript or the project.
+11. Attempt state lives in `state.ui` and is never part of the canonical transcript.
+12. File import and provider acquisition share one pipeline and one document shape.
+13. No network acquisition exists in Stage 2A; placeholders return `NOT_IMPLEMENTED`.
+14. No persistence (localStorage, IndexedDB, backend) and no credentials.
+15. No framework migration: vanilla HTML/CSS/ES modules, no build step, no state library.
+
 ## Not implemented on purpose (later stages)
 
-Transcript download or generation, YouTube API / IFrame Player API, metadata fetching, embedded video player, playback controls, timestamp seeking, transcript/video sync, POI generation, event reconciliation, AI providers, clip generation or ranking, persistence (localStorage / IndexedDB / backend), database, authentication, cloud storage, payments, Discord integration, and platforms other than YouTube.
+Real transcript providers (Supadata, youtube-transcript-api, or any other), automatic provider fallback, transcript download or generation, speech-to-text, API keys, YouTube API / IFrame Player API, metadata fetching, embedded video player, playback controls, timestamp seeking, transcript/video sync, POI generation, event reconciliation, AI providers, clip generation or ranking, persistence (localStorage / IndexedDB / backend), database, authentication, cloud storage, payments, Discord integration, and platforms other than YouTube.
 
 ## Future video + transcript workflow
 
 ```
-URL → VIDEO RESOLVER (1.6/1.7) → VIDEO METADATA PROVIDER → TRANSCRIPT PROVIDER
-    → TRANSCRIPT PARSER (Stage 2) → VALIDATOR → CHUNKER → AI ANALYZER
-    → POI ENGINE → VIDEO PLAYER (player.seekTo(poi.videoPosition.startSeconds))
+VIDEO URL → VIDEO RESOLVER (1.6/1.7) → NORMALIZED VIDEO
+    → TRANSCRIPT PROVIDER MANAGER (2A) → Provider A | Provider B | Provider C (user-chosen)
+    → ACQUISITION RESULT → PROVENANCE → CANONICAL TRANSCRIPT
+    → VALIDATION → CHUNKING → AI ANALYSIS → POIs → EVENT RECONCILIATION
+    → CLIP CANDIDATES → HUMAN REVIEW
+    (later: VIDEO PLAYER — player.seekTo(poi.videoPosition.startSeconds))
 ```
+
+The AI must **not** choose the final clips. It extracts and describes evidence and proposes candidates with their provenance; the human reviews and decides.
 
 A future `js/video/player-controller.js` will expose `load(video)`, `play()`, `pause()`, `seekTo(seconds)`, and `getCurrentTime()`. It will read `video.identity` and never own it, so the model stays independent of any player.
 

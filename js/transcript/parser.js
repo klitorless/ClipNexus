@@ -53,9 +53,11 @@ function runFormatParser(formatModule, rawText) {
  * @param {string} input.filename
  * @param {number} input.size          Bytes.
  * @param {number} [input.lastModified]
+ * @param {object} [input.acquisition]   Provenance from model.js
+ *                                       (createFileAcquisition / createProviderAcquisition).
  * @returns {object} Frozen TranscriptDocument.
  */
-export function parseTranscript({ rawText, format, filename, size, lastModified = null }) {
+export function parseTranscript({ rawText, format, filename, size, lastModified = null, acquisition }) {
     const formatModule = formatParsers[format];
     if (!getFormatById(format) || !formatModule) {
         throw new AppError(
@@ -65,7 +67,7 @@ export function parseTranscript({ rawText, format, filename, size, lastModified 
         );
     }
 
-    const document = createTranscriptDocument({ filename, format, size, lastModified, rawText });
+    const document = createTranscriptDocument({ filename, format, size, lastModified, rawText, acquisition });
     const result = runFormatParser(formatModule, rawText);
 
     document.parse = {

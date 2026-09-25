@@ -9,7 +9,10 @@
 //   vodAnalyzer.inspectTranscript()   // frozen TranscriptDocument
 //   vodAnalyzer.resolveVideoUrl(url)  // try the resolver (pure)
 //   vodAnalyzer.getState("route")
-//   vodAnalyzer.runSelfTests()        // prints a pass/fail table
+//   vodAnalyzer.listProviders()       // registry descriptors
+//   vodAnalyzer.registerMockProviders() // add 2 deterministic mock
+//                                       // providers (UI preview only)
+//   await vodAnalyzer.runSelfTests()  // prints a pass/fail table
 //
 // This is the only intentional global (window.vodAnalyzer).
 // ==========================================================
@@ -22,6 +25,8 @@ import { chunkTranscript } from "../transcript/chunker.js";
 import { createSegment, createTimestamp, withDerivedLayer } from "../transcript/model.js";
 import { resolveVideoUrl } from "../video/video-resolver.js";
 import { addProjectTests, addStage17Tests } from "./devtools-project-tests.js";
+import { addProviderTests } from "./devtools-provider-tests.js";
+import { createMockProvider } from "../transcript/providers/adapters/mock.js";
 
 function getStoredTranscript(appState) {
     const project = appState.get("project");
@@ -137,27 +142,50 @@ function buildTests(appState) {
     // Stage 1.7: start hint, replacement confirmation, alignment, linked video.
     addStage17Tests(add);
 
+    // Stage 2A: provider architecture (deterministic mocks, no network).
+    addProviderTests(add);
+
     return tests;
 }
 
-function runSelfTests(appState) {
-    const results = buildTests(appState).map(({ name, check }) => {
-        try { return { test: name, result: check() ? "PASS" : "FAIL" }; }
-        catch (error) { return { test: name, result: `ERROR: ${error.message}` }; }
-    });
+// Checks may return a boolean or a Promise<boolean> (Stage 2A
+// acquisition is async). Tests run one at a time, in order.
+async function runSelfTests(appState) {
+    const results = [];
+    for (const { name, check } of buildTests(appState)) {
+        try { results.push({ test: name, result: (await check()) === true ? "PASS" : "FAIL" }); }
+        catch (error) { results.push({ test: name, result: `ERROR: ${error.message}` }); }
+    }
     const failed = results.filter((row) => row.result !== "PASS").length;
     console.table(results);
     console.log(`[VOD Analyzer] Self-tests: ${results.length - failed}/${results.length} passed`);
     return { passed: results.length - failed, failed, results };
 }
 
-export function installDevtools(appState) {
+// Opt-in UI preview: registers one always-failing and one
+// always-succeeding mock provider. Their names start with "Mock",
+// so any "transcript" they supply is visibly test data.
+function registerMockProviders(registry, refresh) {
+    const mocks = [
+        createMockProvider({ id: "mock-unavailable", name: "Mock A (always fails)",
+            behavior: "fail", errorCode: "TRANSCRIPT_UNAVAILABLE", delayMs: 600 }),
+        createMockProvider({ id: "mock-success", name: "Mock B (returns test data)", delayMs: 600 })
+    ];
+    const known = new Set(registry.list().map((item) => item.id));
+    mocks.filter((mock) => !known.has(mock.id)).forEach((mock) => registry.register(mock));
+    refresh();
+    return registry.list();
+}
+
+export function installDevtools(appState, { providers, refresh }) {
     window.vodAnalyzer = Object.freeze({
         getState: (key) => appState.get(key),
         inspectProject: () => appState.get("project"),
         inspectTranscript: () => getStoredTranscript(appState),
         resolveVideoUrl,
         formats: TRANSCRIPT_FORMATS,
+        listProviders: () => providers.list(),
+        registerMockProviders: () => registerMockProviders(providers, refresh),
         runSelfTests: () => runSelfTests(appState)
     });
 }

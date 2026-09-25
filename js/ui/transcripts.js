@@ -1,7 +1,8 @@
 // ==========================================================
 // transcripts.js
 // Responsibility: build the Transcripts view for the project's
-// canonical TranscriptDocument, headed by the linked video.
+// canonical TranscriptDocument, headed by the linked video and
+// (Stage 2A) the provider acquisition panel.
 // Read-only; never modifies the project or document.
 //
 // SECURITY: transcript content is untrusted. It is only ever
@@ -12,6 +13,7 @@ import { getFormatById } from "../transcript/formats.js";
 import { createTranscriptSummaryCard } from "./dashboard.js";
 import { createElement, createDetailList } from "./dom.js";
 import { createLinkedVideoCard } from "./project-panel.js";
+import { createAcquisitionPanel } from "./acquisition-panel.js";
 
 const previewLineLimit = 30;
 
@@ -81,18 +83,25 @@ function createEmptyCard() {
     card.append(
         createElement("h2", "card-title", "No transcript loaded"),
         createElement("p", "card-body",
-            "Use Upload Transcript to select a transcript file. " +
-            "The file stays in this browser and is not uploaded anywhere.")
+            "Use Upload Transcript to import a transcript file, or choose a provider above. " +
+            "Imported files stay in this browser and are not uploaded anywhere.")
     );
     return card;
 }
 
-export function renderTranscriptsView(mountElement, project) {
+/**
+ * @param {HTMLElement} mountElement
+ * @param {object|null} project
+ * @param {object|null} [acquisitionView]  { acquisition, providers, onSelectionChange, onAcquire }.
+ *        Omitted → no acquisition panel (read-only rendering).
+ */
+export function renderTranscriptsView(mountElement, project, acquisitionView = null) {
     const transcript = project ? project.transcript : null;
-    const linkedVideoCard = createLinkedVideoCard(project);
+    const header = [createLinkedVideoCard(project)];
+    if (acquisitionView) header.push(createAcquisitionPanel({ project, ...acquisitionView }));
 
     if (!transcript) {
-        mountElement.replaceChildren(linkedVideoCard, createEmptyCard());
+        mountElement.replaceChildren(...header, createEmptyCard());
         return;
     }
 
@@ -104,7 +113,7 @@ export function renderTranscriptsView(mountElement, project) {
     ]);
 
     mountElement.replaceChildren(
-        linkedVideoCard,
+        ...header,
         sourceCard,
         createPipelineCard(transcript),
         createRawPreviewCard(transcript.rawText)

@@ -6,11 +6,16 @@
 //   URL entered → video resolver → project (video identity)
 //   → state → render
 //
-//   file selected → determine format → parser → validator
-//   → attach TranscriptDocument to project → state → render
+//   file selected → determine format → pipeline (parser →
+//   validator) → attach TranscriptDocument to project → state
 //
-// Contains no URL parsing, platform-specific, transcript
-// parsing, validation, or analysis logic.
+//   provider chosen → provider manager → AcquisitionResult
+//   → success: pipeline → attach to project
+//   → failure: project untouched; attempt state shows the error
+//     and offers other providers (never switched automatically)
+//
+// Contains no URL parsing, platform-specific, provider-specific,
+// transcript parsing, validation, or analysis logic.
 //
 // Privacy: files are read with File.text() and kept only in
 // memory in this browser tab. Nothing is sent anywhere.
@@ -23,9 +28,13 @@ import { installDevtools } from "./core/devtools.js";
 import { createProject, withTranscript, applyVideoIdentity, finalizeVideoChange } from "./core/project.js";
 import { resolveVideoUrl, getPlatformLabel } from "./video/video-resolver.js";
 import { getFormatForFilename, getAcceptAttribute, describeSupportedExtensions } from "./transcript/formats.js";
-import { parseTranscript } from "./transcript/parser.js";
-import { validateTranscript } from "./transcript/validator.js";
-import { withDerivedLayer, deepFreeze } from "./transcript/model.js";
+import { buildTranscriptDocument, buildAcquiredTranscript } from "./transcript/pipeline.js";
+import { createFileAcquisition } from "./transcript/model.js";
+import { transcriptProviders } from "./transcript/providers/default-providers.js";
+import { acquireTranscript, applyAcquisitionToProject } from "./transcript/providers/manager.js";
+import {
+    createAcquisitionState, withSelection, beginAttempt, completeAttempt, resetAttempt
+} from "./transcript/providers/acquisition-state.js";
 import { renderSidebar, setActiveNavItem } from "./ui/sidebar.js";
 import { renderDashboard } from "./ui/dashboard.js";
 import { renderTranscriptsView } from "./ui/transcripts.js";
@@ -60,7 +69,12 @@ function renderView(routeId) {
 
     const project = state.get("project");
     if (routeId === "dashboard") renderDashboard(elements.content, state, { onVideoUrlSubmit: handleVideoUrlSubmit });
-    else if (routeId === "transcripts") renderTranscriptsView(elements.content, project);
+    else if (routeId === "transcripts") renderTranscriptsView(elements.content, project, {
+        acquisition: getAcquisition(),
+        providers: transcriptProviders.list(),
+        onSelectionChange: handleAcquisitionSelection,
+        onAcquire: handleAcquireTranscript
+    });
     else renderPlaceholderView(elements.content, routeId);
 
     setActiveNavItem(elements.sidebar, routeId);
@@ -100,6 +114,8 @@ function commitVideoPlan(videoPlan, confirmed, identity) {
     const outcome = next === current && videoPlan.requiresConfirmation ? "cancelled" : videoPlan.outcome;
     const notice = { ok: true, message: describeOutcome(outcome, identity) };
     setVideoUrlNotice(notice);
+    // A different project makes any earlier attempt irrelevant.
+    if (!current || next.id !== current.id) setAcquisition(resetAttempt(getAcquisition()));
     if (next !== current) state.set("project", next);
     return notice;
 }
@@ -145,8 +161,8 @@ async function readFileText(file) {
     }
 }
 
-// Runs the Stage 1.5 pipeline for one file and returns a frozen document.
-async function buildTranscriptDocument(file) {
+// Runs the shared pipeline for one file and returns a frozen document.
+async function buildFileTranscript(file) {
     const format = getFormatForFilename(file.name);
     if (!format) {
         throw new AppError("unsupported_format",
@@ -155,25 +171,14 @@ async function buildTranscriptDocument(file) {
     }
 
     const rawText = await readFileText(file);
-    const parsed = parseTranscript({
+    return buildTranscriptDocument({
         rawText,
         format: format.id,
         filename: file.name,
         size: file.size,
-        lastModified: file.lastModified
+        lastModified: file.lastModified,
+        acquisition: createFileAcquisition()
     });
-
-    // Validation observes; its report is attached as a NEW layer.
-    const report = validateTranscript(parsed);
-    return deepFreeze(withDerivedLayer(parsed, {
-        validation: {
-            status: report.status,
-            validatedAt: report.validatedAt,
-            checks: report.checks,
-            issues: report.issues
-        },
-        processing: { validated: report.valid !== null }
-    }));
 }
 
 async function handleFileSelected(event) {
@@ -182,14 +187,78 @@ async function handleFileSelected(event) {
     if (!file) return;
 
     try {
-        const transcript = await buildTranscriptDocument(file);
+        const transcript = await buildFileTranscript(file);
         const project = state.get("project") || createProject();
         setVideoUrlNotice(null); // Earlier URL message no longer describes the latest action.
+        setAcquisition(resetAttempt(getAcquisition())); // An earlier provider result no longer describes the transcript.
         state.set("project", withTranscript(project, transcript));
         navigate("transcripts");
     } catch (error) {
         showUserError(reportError(error, "Transcript load"));
     }
+}
+
+// ---------- Provider acquisition ----------
+
+let attemptCounter = 0;
+
+function getAcquisition() {
+    return state.get("ui").transcriptAcquisition;
+}
+
+// Attempt state lives in state.ui (never in the project). Setting ui
+// does not re-render by itself, so views are refreshed explicitly.
+function setAcquisition(next) {
+    state.set("ui", { ...state.get("ui"), transcriptAcquisition: next });
+}
+
+function refreshTranscriptsView() {
+    if (state.get("route") === "transcripts") renderView("transcripts");
+}
+
+// Selection changes are recorded silently; the panel updates itself.
+function handleAcquisitionSelection(changes) {
+    setAcquisition(withSelection(getAcquisition(), changes));
+}
+
+// override.providerId: "Try Again" / "Try With <provider>" — an explicit
+// user choice. The chosen provider becomes the selection, so the form
+// and provenance always agree about which provider was used.
+async function handleAcquireTranscript(override = {}) {
+    const project = state.get("project");
+    let acquisition = withSelection(getAcquisition(), override);
+    const { providerId, language, method } = acquisition.selection;
+    const found = transcriptProviders.get(providerId);
+    const attemptId = ++attemptCounter;
+
+    acquisition = beginAttempt(acquisition, {
+        id: attemptId,
+        providerName: found.success ? found.provider.name : String(providerId),
+        projectId: project ? project.id : null
+    });
+    setAcquisition(acquisition);
+    refreshTranscriptsView();
+
+    const result = await acquireTranscript({
+        registry: transcriptProviders, providerId, video: project ? project.video : null, options: { language, method }
+    });
+
+    // The project may have changed while waiting; apply to the CURRENT one.
+    // A reset (new project, file upload) or newer attempt makes this result stale.
+    const latest = getAcquisition();
+    if (!latest.attempt || latest.attempt.id !== attemptId) return;
+    const current = state.get("project");
+    if (!current || !project || current.id !== project.id) return;
+    const applied = applyAcquisitionToProject(current, result, buildAcquiredTranscript);
+
+    if (applied.error) {
+        console.warn("[VOD Analyzer] Transcript acquisition", applied.error.code, applied.error.detail);
+        setAcquisition(completeAttempt(getAcquisition(), attemptId, { error: applied.error }));
+        refreshTranscriptsView(); // project untouched
+        return;
+    }
+    setAcquisition(completeAttempt(getAcquisition(), attemptId, { source: result.source }));
+    state.set("project", applied.project); // triggers render
 }
 
 // ---------- Startup ----------
@@ -199,6 +268,9 @@ function init() {
     document.getElementById("load-check")?.remove();
 
     renderSidebar(elements.sidebar);
+
+    const firstProvider = transcriptProviders.listSelectable()[0];
+    setAcquisition(createAcquisitionState({ providerId: firstProvider ? firstProvider.id : null }));
 
     // Upload control reads its accepted types from formats.js.
     elements.fileInput.accept = getAcceptAttribute();
@@ -210,7 +282,7 @@ function init() {
         if (key === "route" || key === "project") renderView(state.get("route"));
     });
 
-    installDevtools(state);
+    installDevtools(state, { providers: transcriptProviders, refresh: () => renderView(state.get("route")) });
     startRouter();
 }
 

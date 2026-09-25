@@ -25,7 +25,8 @@
 
 import { createRandomId } from "../core/ids.js";
 
-export const TRANSCRIPT_SCHEMA_VERSION = 1;
+// v2 (Stage 2A): adds the `acquisition` provenance record.
+export const TRANSCRIPT_SCHEMA_VERSION = 2;
 
 // ---------- Small utilities ----------
 
@@ -171,18 +172,93 @@ export const VALIDATION_STATUS = Object.freeze({
     ISSUES_FOUND: "issues_found"
 });
 
+// ---------- Acquisition provenance ----------
+//
+// WHERE the transcript came from. One uniform, provider-agnostic
+// shape for every document. Provider response objects never
+// appear here — adapters are normalized at the provider boundary
+// (js/transcript/providers/).
+//
+//   type:              "file" | "provider" | "unknown"
+//   providerId/Name:   registry id + display name (provider only)
+//   method:            "native" | "generated" | "unknown"
+//   generated:         true | false | null   (null = unknown, NOT false)
+//   language:          language the provider reports (null = unknown)
+//   requestedLanguage: what the user asked for (null = provider default)
+//   requestedMethod:   "any" | "native" | "generated" | null
+//   retrievedAt:       ISO time the app received it (provider only)
+//   sourceId:          provider's own id for the transcript/track, or null
+//   video:             { platform, videoId } it was acquired FOR, or null.
+//                      Identity reference only — no metadata copied.
+export const ACQUISITION_TYPE = Object.freeze({
+    FILE: "file",
+    PROVIDER: "provider",
+    UNKNOWN: "unknown"
+});
+
+export const ACQUISITION_METHOD = Object.freeze({
+    NATIVE: "native",
+    GENERATED: "generated",
+    UNKNOWN: "unknown"
+});
+
+// generated is derived from method so the two can never disagree.
+export function generatedFromMethod(method) {
+    if (method === ACQUISITION_METHOD.NATIVE) return false;
+    if (method === ACQUISITION_METHOD.GENERATED) return true;
+    return null;
+}
+
+function createAcquisition(type, fields = {}) {
+    const method = Object.values(ACQUISITION_METHOD).includes(fields.method)
+        ? fields.method : ACQUISITION_METHOD.UNKNOWN;
+    return {
+        type,
+        providerId: fields.providerId ?? null,
+        providerName: fields.providerName ?? null,
+        method,
+        generated: generatedFromMethod(method),
+        language: fields.language ?? null,
+        requestedLanguage: fields.requestedLanguage ?? null,
+        requestedMethod: fields.requestedMethod ?? null,
+        retrievedAt: fields.retrievedAt ?? null,
+        sourceId: fields.sourceId ?? null,
+        video: fields.video
+            ? { platform: fields.video.platform, videoId: fields.video.videoId }
+            : null
+    };
+}
+
+// Imported by the user from a local file. File facts live in document.source.
+export function createFileAcquisition() {
+    return createAcquisition(ACQUISITION_TYPE.FILE);
+}
+
+// Built ONLY from a normalized acquisition result's `source`.
+export function createProviderAcquisition(source) {
+    return createAcquisition(ACQUISITION_TYPE.PROVIDER, source);
+}
+
+export function createUnknownAcquisition() {
+    return createAcquisition(ACQUISITION_TYPE.UNKNOWN);
+}
+
 // ---------- Transcript document ----------
 
 /**
  * Create the canonical TranscriptDocument shell for a loaded file.
  * Segments, validation, and chunks are filled by later layers.
  */
-export function createTranscriptDocument({ filename, format, size, lastModified = null, rawText }) {
+export function createTranscriptDocument({
+    filename, format, size, lastModified = null, rawText, acquisition = createUnknownAcquisition()
+}) {
     return {
         schemaVersion: TRANSCRIPT_SCHEMA_VERSION,
         id: createDocumentId(),
 
-        source: {                             // SOURCE: file facts
+        acquisition,                          // SOURCE PROVENANCE: file vs provider
+
+        source: {                             // SOURCE: content facts (filename null for providers)
             filename,
             format,
             size,

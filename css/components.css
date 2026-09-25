@@ -189,6 +189,86 @@
     flex: 1 1 140px;
 }
 
+/* ---------- Transcript acquisition panel (Stage 2A) ---------- */
+
+.field-group {
+    margin-top: var(--space-4);
+}
+
+.select-input {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    min-height: var(--touch-target);
+    padding: 0 var(--space-3);
+    background: var(--bg);
+    color: inherit;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font: inherit;
+    font-size: 1rem; /* 16px+ prevents mobile zoom-on-focus */
+}
+
+.select-input:focus-visible {
+    border-color: var(--accent);
+}
+
+.select-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.field-hint {
+    margin-top: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--muted);
+    overflow-wrap: anywhere;
+}
+
+.acquire-button {
+    width: 100%;
+    margin-top: var(--space-4);
+}
+
+.acquire-progress {
+    margin-top: var(--space-3);
+    font-weight: 600;
+}
+
+.acquire-alert,
+.acquire-success {
+    margin-top: var(--space-4);
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow-wrap: anywhere;
+}
+
+.acquire-alert {
+    border-color: var(--danger);
+}
+
+.acquire-heading {
+    margin-top: var(--space-2);
+    font-weight: 600;
+}
+
+.acquire-actions {
+    margin-top: var(--space-3);
+}
+
+.acquire-actions .button {
+    flex: 1 1 100%;
+}
+
+@media (min-width: 720px) {
+    .acquire-button,
+    .acquire-actions .button {
+        width: auto;
+        flex: 0 0 auto;
+    }
+}
+
 /* ---------- Stats ---------- */
 
 .stat-grid {
