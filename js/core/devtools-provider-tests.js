@@ -464,14 +464,14 @@ export function addProviderTests(add) {
             hasNoUnsafeElements(mount);
     });
 
-    // Stage 2B update: 2A is now listed as completed; 2B is current.
-    add("dashboard: status card describes Stage 2B honestly (2A completed)", () => {
+    // Stage 3 update: 2B/2C are now listed as completed; Stage 3 (contracts + seam) is current.
+    add("dashboard: status card describes Stage 3 honestly (2B/2C completed)", () => {
         const stubState = { get: (key) => (key === "ui" ? {} : null) };
         const mount = renderDetached((element) =>
             renderDashboard(element, stubState, { onVideoUrlSubmit: () => ({ ok: true, message: "" }) }));
         const text = mount.textContent;
-        return text.includes("Stage 2B — First Real Transcript Provider") &&
-            text.includes("Completed:") && text.includes("Stage 2A — Transcript Acquisition Architecture") &&
-            text.includes("your own API key") && text.includes("Not built yet") && text.includes("AI analysis");
+        return text.includes("Stage 3 — Analysis Contracts & Extraction Seam") &&
+            text.includes("Completed:") && text.includes("Stage 2C — Chunking & Export") &&
+            text.includes("your own API key") && text.includes("Not built yet") && text.includes("POI extraction");
     });
 }

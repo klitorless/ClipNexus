@@ -15,7 +15,7 @@ The goal is to build a reliable pipeline that preserves evidence, uncertainty, p
 
 Current Status
 
-Development stage: Stage 2B complete — Stage 3 next
+Development stage: Stage 3 analysis contracts + extraction seam complete — first real extractor next
 
 Stage| Status| Description
 Stage 1| ✅ Complete| Frontend shell and application structure
@@ -24,8 +24,8 @@ Stage 1.6| ✅ Complete| Transcript validation and data integrity
 Stage 1.7| ✅ Complete| Architecture hardening and regression testing
 Stage 2A| ✅ Complete| Provider/acquisition architecture
 Stage 2B| ✅ Complete| Supadata YouTube transcript provider
-Stage 2C| 🔨 Next| Transcript chunking and export workflow
-Stage 3| ⏳ Planned| Evidence and transcript analysis
+Stage 2C| ✅ Complete| Transcript chunking and export workflow
+Stage 3| ✅ Complete| Analysis contracts + extractor seam (no AI yet)
 Stage 4| ⏳ Planned| POI extraction and event reconciliation
 Stage 5| ⏳ Planned| ClipSpec generation
 Future| ⏳ Planned| ClipNexus editing/rendering engine
@@ -449,9 +449,9 @@ Testing
 
 ClipNexus uses an internal self-test/development test system to protect architectural contracts.
 
-The Stage 2B implementation currently has:
+The Stage 3 implementation currently has:
 
-108 / 108 tests passing
+165 / 165 tests passing
 
 The test suite covers areas including:
 

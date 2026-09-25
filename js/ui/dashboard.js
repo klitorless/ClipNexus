@@ -29,26 +29,28 @@ function createStatusCard() {
     const card = createElement("article", "card");
     card.append(
         createElement("span", "tag", "Current stage"),
-        createElement("h2", "card-title", "Stage 2B — First Real Transcript Provider"),
+        createElement("h2", "card-title", "Stage 3 — Analysis Contracts & Extraction Seam"),
         createElement(
             "p",
             "card-body",
             "Available now: identify a YouTube video from its URL (including a start-time hint), " +
             "import a transcript file as raw source evidence, or fetch the video's transcript from " +
             "Supadata with your own API key on the Transcripts page. JSON transcripts are parsed into " +
-            "timestamped segments."
+            "timestamped segments, chunked into deterministic windows, and exportable as JSON. " +
+            "Analysis runs through a provider-agnostic extractor seam that produces traceable evidence."
         ),
         createElement(
             "p",
             "card-body",
             "Not built yet: parsing for TXT/SRT/VTT files, transcript validation, video metadata, an embedded " +
-            "player, AI analysis, POIs, and clips. Projects and API keys are forgotten when the page reloads."
+            "player, real AI extractors, POI extraction, event reconciliation, ClipSpec, and clips. Projects and API keys are forgotten when the page reloads."
         ),
         createElement(
             "p",
             "field-hint",
             "Completed: Stage 1.5 — Transcript Data Foundation · Stage 1.6 — Project & Video Foundation · " +
-            "Stage 1.7 — Project & Video Foundation Hardening · Stage 2A — Transcript Acquisition Architecture"
+            "Stage 1.7 — Project & Video Foundation Hardening · Stage 2A — Transcript Acquisition Architecture · " +
+            "Stage 2B — First Real Transcript Provider · Stage 2C — Chunking & Export"
         )
     );
     return card;
