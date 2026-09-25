@@ -30,9 +30,10 @@
                 Upload Transcript
             </button>
 
-            <!-- Hidden file input, opened by the Upload button (see js/app.js) -->
+            <!-- Hidden file input, opened by the Upload button (see js/app.js).
+                 Its "accept" list is set from js/transcript/formats.js. -->
             <input id="transcript-file-input" class="visually-hidden" type="file"
-                   accept=".txt,.srt,.vtt,.json" tabindex="-1" aria-hidden="true">
+                   tabindex="-1" aria-hidden="true">
         </header>
 
         <!-- Sidebar navigation mount point (rendered by js/ui/sidebar.js) -->

@@ -2,11 +2,23 @@
 // state.js
 // Responsibility: hold application state and notify
 // subscribers when it changes. No framework, no DOM access.
+//
+// Store whole objects with set(); do not mutate values in place.
+// The transcript is a frozen TranscriptDocument (see
+// js/transcript/model.js); new derived layers produce a new
+// document object that replaces the old one via set().
 // ==========================================================
 
 const initialState = {
-    transcript: null,
-    route: "dashboard"
+    route: "dashboard",
+
+    project: {},        // Reserved: project metadata (later stage)
+    transcript: null,   // Canonical TranscriptDocument or null
+    analysis: {},       // Reserved: AI evidence analysis (later stage)
+    pois: [],           // Reserved: POIs (later stage)
+    events: [],         // Reserved: event arcs (later stage)
+    clips: [],          // Reserved: clip candidates for human review (later stage)
+    ui: {}              // Reserved: view preferences
 };
 
 function createState(startingValues) {

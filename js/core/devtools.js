@@ -1,0 +1,146 @@
+// ==========================================================
+// devtools.js
+// Responsibility: lightweight browser-console helpers for
+// inspecting state and running architectural self-tests.
+// No test framework, no network, no effect on app state.
+//
+// Usage in the browser console:
+//   vodAnalyzer.inspectTranscript()   // frozen TranscriptDocument
+//   vodAnalyzer.getState("route")
+//   vodAnalyzer.runSelfTests()        // prints a pass/fail table
+//
+// This is the only intentional global (window.vodAnalyzer).
+// ==========================================================
+
+import { AppError } from "./errors.js";
+import { TRANSCRIPT_FORMATS, getFormatForFilename, getAcceptAttribute } from "../transcript/formats.js";
+import { parseTranscript } from "../transcript/parser.js";
+import { validateTranscript, createValidationIssue, ISSUE_TYPES } from "../transcript/validator.js";
+import { chunkTranscript } from "../transcript/chunker.js";
+import { createSegment, createTimestamp, withDerivedLayer } from "../transcript/model.js";
+
+// Samples include CRLF, Unicode, and HTML-like text to prove the raw
+// source survives byte-for-byte and is never treated as markup.
+const samples = {
+    txt: "[00:00:01] Streamer: hello <b>chat</b>\r\n[00:00:05] ok 🎮\n",
+    srt: "1\r\n00:00:01,000 --> 00:00:03,500\r\n<script>alert(1)</script>\r\n\r\n2\r\n00:00:04,000 --> 00:00:06,000\r\nnext line\r\n",
+    vtt: "WEBVTT\n\n00:00:01.000 --> 00:00:03.500\n<v Streamer>hello & welcome\n",
+    json: "[{\"start\": 1.0, \"end\": 3.5, \"speaker\": \"Streamer\", \"text\": \"héllo\"}]"
+};
+
+function parseSample(formatId) {
+    return parseTranscript({
+        rawText: samples[formatId],
+        format: formatId,
+        filename: `sample.${formatId}`,
+        size: samples[formatId].length
+    });
+}
+
+function throwsTypeError(action) {
+    try { action(); return false; } catch (error) { return error instanceof TypeError; }
+}
+
+function buildTests(appState) {
+    const tests = [];
+    const add = (name, check) => tests.push({ name, check });
+
+    add("every format has a parser", () =>
+        TRANSCRIPT_FORMATS.every((format) => parseSample(format.id).parse.parser === format.id));
+
+    add("upload accept matches formats.js", () => {
+        const input = document.getElementById("transcript-file-input");
+        return input !== null && input.accept === getAcceptAttribute();
+    });
+
+    add("extension lookup is case-insensitive", () =>
+        getFormatForFilename("VOD.SRT")?.id === "srt" && getFormatForFilename("a.vtt")?.id === "vtt");
+
+    add("unsupported extensions are rejected", () =>
+        getFormatForFilename("clip.mp4") === null && getFormatForFilename("noextension") === null);
+
+    add("parser rejects unknown format with AppError", () => {
+        try { parseTranscript({ rawText: "x", format: "pdf", filename: "a.pdf", size: 1 }); return false; }
+        catch (error) { return error instanceof AppError && error.code === "no_parser_for_format"; }
+    });
+
+    TRANSCRIPT_FORMATS.forEach(({ id }) => {
+        add(`${id}: raw text preserved exactly`, () => parseSample(id).rawText === samples[id]);
+        add(`${id}: document and source are frozen`, () => {
+            const doc = parseSample(id);
+            return Object.isFrozen(doc) && Object.isFrozen(doc.source) && Object.isFrozen(doc.segments);
+        });
+        add(`${id}: reports placeholder parse status`, () =>
+            parseSample(id).parse.status === "not_implemented" && parseSample(id).processing.parsed === false);
+    });
+
+    add("mutating a document throws (strict mode)", () => {
+        const doc = parseSample("srt");
+        return throwsTypeError(() => { doc.rawText = "changed"; }) &&
+            throwsTypeError(() => { doc.source.filename = "changed"; });
+    });
+
+    add("validator does not mutate the document", () => {
+        const doc = parseSample("vtt");
+        const before = JSON.stringify(doc);
+        const report = validateTranscript(doc);
+        return JSON.stringify(doc) === before && report.valid === null && Array.isArray(report.issues);
+    });
+
+    add("derived layer creates a new document", () => {
+        const doc = parseSample("txt");
+        const next = withDerivedLayer(doc, { chunks: chunkTranscript(doc.segments) });
+        return next !== doc && next.rawText === doc.rawText && doc.processing.chunked === false;
+    });
+
+    add("segment keeps provenance + raw timestamp", () => {
+        const segment = createSegment({
+            index: 3, format: "srt", sequence: 3, cueId: "4",
+            lines: { start: 13, end: 15 }, offsets: { start: 120, end: 168 },
+            start: createTimestamp({ raw: "01:23:45,500", seconds: 5025.5 }),
+            text: "  original   spacing kept "
+        });
+        return segment.id === "seg-000003" && segment.source.cueId === "4" &&
+            segment.start.raw === "01:23:45,500" && segment.start.seconds === 5025.5 &&
+            segment.text === "  original   spacing kept " && segment.end.status === "missing";
+    });
+
+    add("validation issue has canonical shape", () => {
+        const issue = createValidationIssue({
+            index: 0, type: ISSUE_TYPES.TIMESTAMP_RESET, message: "Clock reset",
+            segmentIds: ["seg-000123", "seg-000124"], source: { format: "srt", sequence: 123 }
+        });
+        return issue.id === "issue-000000" && issue.severity === "warning" && issue.segmentIds.length === 2;
+    });
+
+    add("stored transcript cannot be corrupted via inspection", () => {
+        const stored = appState.get("transcript");
+        if (!stored) return true; // Nothing loaded; nothing to corrupt.
+        const before = JSON.stringify(stored);
+        throwsTypeError(() => { stored.rawText = ""; });
+        throwsTypeError(() => { stored.segments.push({}); });
+        return JSON.stringify(appState.get("transcript")) === before;
+    });
+
+    return tests;
+}
+
+function runSelfTests(appState) {
+    const results = buildTests(appState).map(({ name, check }) => {
+        try { return { test: name, result: check() ? "PASS" : "FAIL" }; }
+        catch (error) { return { test: name, result: `ERROR: ${error.message}` }; }
+    });
+    const failed = results.filter((row) => row.result !== "PASS").length;
+    console.table(results);
+    console.log(`[VOD Analyzer] Self-tests: ${results.length - failed}/${results.length} passed`);
+    return { passed: results.length - failed, failed, results };
+}
+
+export function installDevtools(appState) {
+    window.vodAnalyzer = Object.freeze({
+        getState: (key) => appState.get(key),
+        inspectTranscript: () => appState.get("transcript"),
+        formats: TRANSCRIPT_FORMATS,
+        runSelfTests: () => runSelfTests(appState)
+    });
+}

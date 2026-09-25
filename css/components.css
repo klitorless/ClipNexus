@@ -99,6 +99,7 @@
     font-size: var(--text-sm);
 }
 
+.detail-list + .card-body,
 .card-body + .card-body {
     margin-top: var(--space-2);
 }
@@ -142,6 +143,23 @@
 .detail-list dd {
     margin: 0;
     font-family: var(--font-mono);
+    overflow-wrap: anywhere;
+}
+
+/* ---------- Raw transcript preview ---------- */
+
+.raw-preview {
+    margin: var(--space-3) 0 0;
+    padding: var(--space-3);
+    max-height: 360px;
+    overflow: auto;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
 

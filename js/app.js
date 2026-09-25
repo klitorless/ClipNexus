@@ -1,8 +1,13 @@
 // ==========================================================
 // app.js
-// Responsibility: application entry point. Wires modules
-// together (state, router, sidebar, views) and handles local
-// transcript file loading. Contains no parsing or analysis.
+// Responsibility: application COORDINATOR. Wires modules
+// together (state, router, sidebar, views) and runs the
+// file-loading flow:
+//
+//   file selected → determine format → parser → validator
+//   → store canonical TranscriptDocument → render
+//
+// Contains no parsing, validation, or analysis logic.
 //
 // Privacy: files are read with File.text() and kept only in
 // memory in this browser tab. Nothing is sent anywhere.
@@ -10,10 +15,16 @@
 
 import { state } from "./core/state.js";
 import { routes, startRouter, navigate } from "./core/router.js";
+import { AppError, reportError } from "./core/errors.js";
+import { installDevtools } from "./core/devtools.js";
+import { getFormatForFilename, getAcceptAttribute, describeSupportedExtensions } from "./transcript/formats.js";
+import { parseTranscript } from "./transcript/parser.js";
+import { validateTranscript } from "./transcript/validator.js";
+import { withDerivedLayer, deepFreeze } from "./transcript/model.js";
 import { renderSidebar, setActiveNavItem } from "./ui/sidebar.js";
-import { renderDashboard, createTranscriptSummaryCard } from "./ui/dashboard.js";
-
-const supportedExtensions = ["txt", "srt", "vtt", "json"];
+import { renderDashboard } from "./ui/dashboard.js";
+import { renderTranscriptsView } from "./ui/transcripts.js";
+import { createInfoCard } from "./ui/dom.js";
 
 const elements = {
     sidebar: document.getElementById("sidebar-mount"),
@@ -24,50 +35,6 @@ const elements = {
 };
 
 // ---------- Views ----------
-
-// Simple card used by sections that are not built yet.
-function createInfoCard(title, bodyText, tagText, tagClass = "tag") {
-    const card = document.createElement("article");
-    card.className = "card";
-
-    if (tagText) {
-        const tag = document.createElement("span");
-        tag.className = tagClass;
-        tag.textContent = tagText;
-        card.append(tag);
-    }
-
-    const heading = document.createElement("h2");
-    heading.className = "card-title";
-    heading.textContent = title;
-
-    const body = document.createElement("p");
-    body.className = "card-body";
-    body.textContent = bodyText;
-
-    card.append(heading, body);
-    return card;
-}
-
-function renderTranscriptsView(mount) {
-    const transcript = state.get("transcript");
-    if (!transcript) {
-        mount.replaceChildren(createInfoCard(
-            "No transcript loaded",
-            "Use Upload Transcript to select a .txt, .srt, .vtt, or .json file. " +
-            "The file stays in this browser and is not uploaded anywhere."
-        ));
-        return;
-    }
-    mount.replaceChildren(
-        createTranscriptSummaryCard(transcript),
-        createInfoCard(
-            "Transcript preview",
-            "Parsing is not implemented yet. The raw file is held in memory for the next stage.",
-            "Placeholder"
-        )
-    );
-}
 
 const placeholderText = {
     pois: "Evidence-supported Points of Interest will appear here.",
@@ -87,7 +54,7 @@ function renderView(routeId) {
     document.title = `${elements.pageTitle.textContent} · VOD Analyzer`;
 
     if (routeId === "dashboard") renderDashboard(elements.content, state);
-    else if (routeId === "transcripts") renderTranscriptsView(elements.content);
+    else if (routeId === "transcripts") renderTranscriptsView(elements.content, state.get("transcript"));
     else renderPlaceholderView(elements.content, routeId);
 
     setActiveNavItem(elements.sidebar, routeId);
@@ -95,15 +62,50 @@ function renderView(routeId) {
 
 // ---------- File loading ----------
 
-function getExtension(fileName) {
-    const parts = fileName.toLowerCase().split(".");
-    return parts.length > 1 ? parts.pop() : "";
-}
-
-function showUploadError(message) {
+function showUserError(message) {
     elements.content.prepend(
         createInfoCard("Could not load file", message, "Error", "tag tag-danger")
     );
+}
+
+async function readFileText(file) {
+    try {
+        return await file.text();
+    } catch (cause) {
+        throw new AppError("file_read_failed", "The file could not be read in this browser.",
+            { filename: file.name, size: file.size }, cause);
+    }
+}
+
+// Runs the Stage 1.5 pipeline for one file and returns a frozen document.
+async function buildTranscriptDocument(file) {
+    const format = getFormatForFilename(file.name);
+    if (!format) {
+        throw new AppError("unsupported_format",
+            `Unsupported file type. Use: ${describeSupportedExtensions()}.`,
+            { filename: file.name });
+    }
+
+    const rawText = await readFileText(file);
+    const parsed = parseTranscript({
+        rawText,
+        format: format.id,
+        filename: file.name,
+        size: file.size,
+        lastModified: file.lastModified
+    });
+
+    // Validation observes; its report is attached as a NEW layer.
+    const report = validateTranscript(parsed);
+    return deepFreeze(withDerivedLayer(parsed, {
+        validation: {
+            status: report.status,
+            validatedAt: report.validatedAt,
+            checks: report.checks,
+            issues: report.issues
+        },
+        processing: { validated: report.valid !== null }
+    }));
 }
 
 async function handleFileSelected(event) {
@@ -111,17 +113,12 @@ async function handleFileSelected(event) {
     event.target.value = ""; // Allow re-selecting the same file later.
     if (!file) return;
 
-    if (!supportedExtensions.includes(getExtension(file.name))) {
-        showUploadError(`Unsupported file type. Use: ${supportedExtensions.join(", ")}.`);
-        return;
-    }
-
     try {
-        const rawText = await file.text();
-        state.set("transcript", { name: file.name, size: file.size, rawText });
+        const transcript = await buildTranscriptDocument(file);
+        state.set("transcript", transcript);
         navigate("transcripts");
     } catch (error) {
-        showUploadError("The file could not be read in this browser.");
+        showUserError(reportError(error, "Transcript load"));
     }
 }
 
@@ -133,6 +130,8 @@ function init() {
 
     renderSidebar(elements.sidebar);
 
+    // Upload control reads its accepted types from formats.js.
+    elements.fileInput.accept = getAcceptAttribute();
     elements.uploadButton.addEventListener("click", () => elements.fileInput.click());
     elements.fileInput.addEventListener("change", handleFileSelected);
 
@@ -141,6 +140,7 @@ function init() {
         if (key === "route" || key === "transcript") renderView(state.get("route"));
     });
 
+    installDevtools(state);
     startRouter();
 }
 

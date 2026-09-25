@@ -5,17 +5,12 @@
 // receives data, returns elements.
 // ==========================================================
 
+import { createElement, createDetailList } from "./dom.js";
+
 export function formatFileSize(bytes) {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
-
-function createElement(tag, className, text) {
-    const element = document.createElement(tag);
-    if (className) element.className = className;
-    if (text !== undefined) element.textContent = text;
-    return element;
 }
 
 function createStatCard(label, value) {
@@ -43,18 +38,18 @@ function createStatusCard() {
 }
 
 // Shared by Dashboard and Transcripts views.
-export function createTranscriptSummaryCard(transcript) {
+// transcript: canonical TranscriptDocument (read-only).
+// extraRows: optional [label, value] pairs appended to the details.
+export function createTranscriptSummaryCard(transcript, extraRows = []) {
     const card = createElement("article", "card");
-    card.append(createElement("h2", "card-title", "Loaded transcript"));
-
-    const details = createElement("dl", "detail-list");
-    details.append(
-        createElement("dt", "", "Filename"),
-        createElement("dd", "", transcript.name),
-        createElement("dt", "", "File size"),
-        createElement("dd", "", formatFileSize(transcript.size))
+    card.append(
+        createElement("h2", "card-title", "Loaded transcript"),
+        createDetailList([
+            ["Filename", transcript.source.filename],
+            ["File size", formatFileSize(transcript.source.size)],
+            ...extraRows
+        ])
     );
-    card.append(details);
     return card;
 }
 
@@ -65,8 +60,8 @@ export function renderDashboard(mountElement, appState) {
     const stats = createElement("div", "stat-grid");
     stats.append(
         createStatCard("Transcripts", transcriptCount),
-        createStatCard("POIs discovered", 0),
-        createStatCard("Clip candidates", 0)
+        createStatCard("POIs discovered", appState.get("pois").length),
+        createStatCard("Clip candidates", appState.get("clips").length)
     );
 
     mountElement.replaceChildren(stats, createStatusCard());
