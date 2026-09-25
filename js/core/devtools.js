@@ -29,6 +29,7 @@ import { addProviderTests } from "./devtools-provider-tests.js";
 import { addSupadataTests } from "./devtools-supadata-tests.js";
 import { addAnalysisTests } from "./devtools-analysis-tests.js";
 import { addChunkingTests } from "./devtools-chunking-tests.js";
+import { addAnalyzerIntegrationTests } from "./devtools-analyzer-tests.js";
 import { createMockProvider } from "../transcript/providers/adapters/mock.js";
 
 function getStoredTranscript(appState) {
@@ -168,6 +169,10 @@ function buildTests(appState) {
 
     // Stage 2C: deterministic chunking + export.
     addChunkingTests(add);
+
+    // Analyzer/extraction seam: TranscriptDocument → chunks →
+    // analyzer → structured evidence (no AI integration).
+    addAnalyzerIntegrationTests(add);
 
     return tests;
 }
