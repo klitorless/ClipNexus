@@ -35,6 +35,22 @@
     border-color: var(--accent-strong);
 }
 
+.button-danger {
+    border-color: var(--danger);
+    color: var(--danger);
+}
+
+.button-danger:hover {
+    background: var(--danger);
+    color: var(--bg);
+}
+
+.button:disabled,
+.text-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 /* ---------- Navigation ---------- */
 
 .nav-list {
@@ -155,6 +171,22 @@
 
 .field-message.is-error {
     color: var(--danger);
+}
+
+/* Inline replace-project confirmation */
+.confirm-panel {
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-sm);
+}
+
+.confirm-panel .field-row {
+    margin-top: var(--space-3);
+}
+
+.confirm-panel .button {
+    flex: 1 1 140px;
 }
 
 /* ---------- Stats ---------- */

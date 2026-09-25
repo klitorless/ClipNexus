@@ -4,18 +4,24 @@
 // Factory functions only — no URL parsing, no network, no
 // player logic.
 //
-// A video has two strictly separate parts:
+// A video has strictly separate parts:
 //
-//   identity  WHICH video this is (platform, videoId,
-//             canonicalUrl). Known locally from the URL.
-//   metadata  WHAT the video is like (title, thumbnail,
-//             duration). Only a future metadata provider may
-//             fill these in. Until then they are null.
+//   identity       WHICH video this is (platform, videoId,
+//                  canonicalUrl). Known locally from the URL.
+//   metadata       WHAT the video is like (title, thumbnail,
+//                  duration). Only a future metadata provider may
+//                  fill these in. Until then they are null.
+//   startPosition  An optional playback HINT read from the URL
+//                  (e.g. YouTube "?t=1m20s"). NOT identity: two
+//                  URLs with different hints are the same video.
+//                  Never verified against the video.
 //
 // Unknown is not false: null means "not acquired", never
 // "empty" or "none". UI fallbacks such as "Not loaded" are
 // display text only and are never stored here.
 // ==========================================================
+
+import { createTimestamp, TIMESTAMP_STATUS } from "../transcript/model.js";
 
 export const VIDEO_SCHEMA_VERSION = 1;
 
@@ -58,14 +64,48 @@ function createEmptyMetadata() {
 }
 
 /**
- * Create a Video from a resolved identity. Metadata starts empty.
+ * Start-position hint. Uses the Stage 1.5 timestamp shape
+ * {raw, seconds, status} — there is no second timestamp format.
+ *
+ * @param {object} fields
+ * @param {string} fields.raw        Time text exactly as in the URL, e.g. "1m20s".
+ * @param {number|null} fields.seconds  Derived seconds; null unless status is "parsed".
+ * @param {string} fields.status     TIMESTAMP_STATUS value.
+ * @param {string} fields.sourceUrl  The exact URL the hint came from.
  */
-export function createVideo(identity) {
+export function createStartPosition({ raw, seconds, status, sourceUrl }) {
+    const timestamp = createTimestamp({ raw, seconds, status });
+    return Object.freeze({
+        ...timestamp,
+        seconds: timestamp.status === TIMESTAMP_STATUS.PARSED ? timestamp.seconds : null,
+        source: "url",
+        sourceUrl,
+        verified: false          // never checked against the actual video
+    });
+}
+
+/**
+ * Create a Video from a resolved identity. Metadata starts empty.
+ * startPosition is a createStartPosition() result or null.
+ */
+export function createVideo(identity, startPosition = null) {
     return Object.freeze({
         schemaVersion: VIDEO_SCHEMA_VERSION,
         identity,
-        metadata: createEmptyMetadata()
+        metadata: createEmptyMetadata(),
+        startPosition
     });
+}
+
+// Same video, different hint: returns a new Video that keeps the
+// identity and metadata objects and swaps only the hint.
+export function withStartPosition(video, startPosition) {
+    return Object.freeze({ ...video, startPosition });
+}
+
+export function isSameStartPosition(a, b) {
+    if (a === null || b === null) return a === b;
+    return a.raw === b.raw && a.seconds === b.seconds && a.status === b.status;
 }
 
 // Two videos are the same video when platform + videoId match.

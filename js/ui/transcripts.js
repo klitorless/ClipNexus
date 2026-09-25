@@ -1,7 +1,8 @@
 // ==========================================================
 // transcripts.js
-// Responsibility: build the Transcripts view for a canonical
-// TranscriptDocument. Read-only; never modifies the document.
+// Responsibility: build the Transcripts view for the project's
+// canonical TranscriptDocument, headed by the linked video.
+// Read-only; never modifies the project or document.
 //
 // SECURITY: transcript content is untrusted. It is only ever
 // inserted with textContent, never innerHTML.
@@ -10,6 +11,7 @@
 import { getFormatById } from "../transcript/formats.js";
 import { createTranscriptSummaryCard } from "./dashboard.js";
 import { createElement, createDetailList } from "./dom.js";
+import { createLinkedVideoCard } from "./project-panel.js";
 
 const previewLineLimit = 30;
 
@@ -85,9 +87,12 @@ function createEmptyCard() {
     return card;
 }
 
-export function renderTranscriptsView(mountElement, transcript) {
+export function renderTranscriptsView(mountElement, project) {
+    const transcript = project ? project.transcript : null;
+    const linkedVideoCard = createLinkedVideoCard(project);
+
     if (!transcript) {
-        mountElement.replaceChildren(createEmptyCard());
+        mountElement.replaceChildren(linkedVideoCard, createEmptyCard());
         return;
     }
 
@@ -99,6 +104,7 @@ export function renderTranscriptsView(mountElement, transcript) {
     ]);
 
     mountElement.replaceChildren(
+        linkedVideoCard,
         sourceCard,
         createPipelineCard(transcript),
         createRawPreviewCard(transcript.rawText)

@@ -27,13 +27,19 @@ function createStatCard(label, value) {
 function createStatusCard() {
     const card = createElement("article", "card");
     card.append(
-        createElement("span", "tag", "In progress"),
-        createElement("h2", "card-title", "Stage 1 — Application Shell"),
+        createElement("span", "tag", "Current stage"),
+        createElement("h2", "card-title", "Stage 1.7 — Project & Video Foundation"),
         createElement(
             "p",
             "card-body",
-            "Transcript parsing, validation, chunking, AI analysis, POI extraction, " +
-            "event reconciliation, and clip construction will be added as independent modules."
+            "Available now: identify a YouTube video from its URL (including a start-time hint), " +
+            "load a transcript file as raw source evidence, and link both in one in-memory project."
+        ),
+        createElement(
+            "p",
+            "card-body",
+            "Not built yet: transcript parsing, transcript download, video metadata, an embedded " +
+            "player, AI analysis, POIs, and clips. Projects are lost when the page reloads."
         )
     );
     return card;

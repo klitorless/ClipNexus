@@ -21,7 +21,7 @@
 
 import { createRandomId } from "./ids.js";
 import { deepFreeze } from "../transcript/model.js";
-import { createVideo, isSameVideo } from "../video/video-model.js";
+import { createVideo, isSameVideo, isSameStartPosition, withStartPosition } from "../video/video-model.js";
 
 export const PROJECT_SCHEMA_VERSION = 1;
 
@@ -34,18 +34,41 @@ export const PROJECT_STAGE = Object.freeze({
     VIDEO_AND_TRANSCRIPT: "video_and_transcript"
 });
 
-// alignment.status values:
-//   "unverified"  no evidence yet that transcript time == video time
-//   "assumed"     treated as equal without verification   (future)
-//   "verified"    confirmed (e.g. transcript from this video) (future)
+// ---------- Time alignment ----------
+//
+// Answers ONE question: do transcript timestamps correspond to
+// positions on this video's timeline (and with what offset)?
+//
+// status:
+//   "unverified"  The relationship has NOT been established. This is
+//                 the only status used through Stage 1.7. Having
+//                 timestamps, a plausible duration, or a URL "?t="
+//                 is NOT evidence of alignment.
+//   "assumed"     (future) A documented basis exists (recorded in
+//                 `method`) but nothing has independently checked it.
+//   "verified"    (future) Defined evidence (recorded in `evidence`)
+//                 establishes the relationship. Requires verifiedAt.
+//
+// method:        null until a future stage defines named methods.
+// evidence:      [] until a future stage defines evidence records.
+//                Never filled with placeholder or implied evidence.
+// offsetSeconds: video time = transcript time + offsetSeconds.
+//                null = unknown (NOT zero).
+// verifiedAt:    ISO string, only when status is "verified".
 export const ALIGNMENT_STATUS = Object.freeze({
     UNVERIFIED: "unverified",
     ASSUMED: "assumed",
     VERIFIED: "verified"
 });
 
-function createUnverifiedAlignment() {
-    return { status: ALIGNMENT_STATUS.UNVERIFIED, offsetSeconds: null };
+export function createUnverifiedAlignment() {
+    return {
+        status: ALIGNMENT_STATUS.UNVERIFIED,
+        method: null,
+        evidence: [],
+        offsetSeconds: null,
+        verifiedAt: null
+    };
 }
 
 export function createProject() {
@@ -80,30 +103,56 @@ export function withTranscript(project, transcriptDocument) {
 }
 
 /**
- * Apply a resolved video identity to the current project.
+ * Plan the effect of a resolved video on the current project.
+ * Pure: never changes currentProject; nothing is applied until the
+ * caller stores `project` (use finalizeVideoChange for replacements).
  *
- * Rules:
- *   no project                     → new project with this video ("created")
+ *   no project                     → new project ("created")
  *   project without a video        → attach video, keep transcript ("attached")
- *   project with the SAME video    → unchanged ("unchanged")
- *   project with a DIFFERENT video → new project; the old transcript
- *                                    belonged to another video ("replaced")
+ *   SAME video, same/no new hint   → unchanged ("unchanged")
+ *   SAME video, new "?t=" hint     → update only video.startPosition
+ *                                    ("start_position_updated")
+ *   DIFFERENT video                → new project ("replaced"). If the current
+ *                                    project holds a transcript,
+ *                                    requiresConfirmation is true.
  *
- * @returns {{project:object, outcome:"created"|"attached"|"unchanged"|"replaced"}}
+ * A URL without any time parameter leaves an existing hint in place:
+ * it carries no new information about start position.
+ *
+ * @returns {{project:object, outcome:string, requiresConfirmation:boolean}}
  */
-export function applyVideoIdentity(currentProject, identity) {
-    const video = createVideo(identity);
+export function applyVideoIdentity(currentProject, identity, startPosition = null) {
+    const plan = (project, outcome, requiresConfirmation = false) =>
+        ({ project, outcome, requiresConfirmation });
 
     if (!currentProject) {
-        return { project: withChanges(createProject(), { video }), outcome: "created" };
+        return plan(withChanges(createProject(), { video: createVideo(identity, startPosition) }), "created");
     }
     if (!currentProject.video) {
-        return { project: withChanges(currentProject, { video }), outcome: "attached" };
+        return plan(withChanges(currentProject, { video: createVideo(identity, startPosition) }), "attached");
     }
-    if (isSameVideo(currentProject.video, video)) {
-        return { project: currentProject, outcome: "unchanged" };
+
+    const current = currentProject.video;
+    if (isSameVideo(current, { identity })) {
+        if (startPosition === null || isSameStartPosition(current.startPosition, startPosition)) {
+            return plan(currentProject, "unchanged");
+        }
+        return plan(withChanges(currentProject, { video: withStartPosition(current, startPosition) }),
+            "start_position_updated");
     }
-    return { project: withChanges(createProject(), { video }), outcome: "replaced" };
+
+    const replacement = withChanges(createProject(), { video: createVideo(identity, startPosition) });
+    return plan(replacement, "replaced", currentProject.transcript !== null);
+}
+
+/**
+ * Decide which project to keep after a plan that may need confirmation.
+ * confirmed=false on a confirmation-required plan returns the current
+ * project untouched (the same object).
+ */
+export function finalizeVideoChange(currentProject, videoPlan, { confirmed }) {
+    if (videoPlan.requiresConfirmation && !confirmed) return currentProject;
+    return videoPlan.project;
 }
 
 export function getProjectStage(project) {

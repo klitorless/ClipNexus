@@ -21,7 +21,7 @@ import { validateTranscript, createValidationIssue, ISSUE_TYPES } from "../trans
 import { chunkTranscript } from "../transcript/chunker.js";
 import { createSegment, createTimestamp, withDerivedLayer } from "../transcript/model.js";
 import { resolveVideoUrl } from "../video/video-resolver.js";
-import { addProjectTests } from "./devtools-project-tests.js";
+import { addProjectTests, addStage17Tests } from "./devtools-project-tests.js";
 
 function getStoredTranscript(appState) {
     const project = appState.get("project");
@@ -133,6 +133,9 @@ function buildTests(appState) {
 
     // Stage 1.6: project + video foundation.
     addProjectTests(add);
+
+    // Stage 1.7: start hint, replacement confirmation, alignment, linked video.
+    addStage17Tests(add);
 
     return tests;
 }

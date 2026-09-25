@@ -20,7 +20,7 @@ import { state } from "./core/state.js";
 import { routes, startRouter, navigate } from "./core/router.js";
 import { AppError, reportError } from "./core/errors.js";
 import { installDevtools } from "./core/devtools.js";
-import { createProject, withTranscript, applyVideoIdentity } from "./core/project.js";
+import { createProject, withTranscript, applyVideoIdentity, finalizeVideoChange } from "./core/project.js";
 import { resolveVideoUrl, getPlatformLabel } from "./video/video-resolver.js";
 import { getFormatForFilename, getAcceptAttribute, describeSupportedExtensions } from "./transcript/formats.js";
 import { parseTranscript } from "./transcript/parser.js";
@@ -60,7 +60,7 @@ function renderView(routeId) {
 
     const project = state.get("project");
     if (routeId === "dashboard") renderDashboard(elements.content, state, { onVideoUrlSubmit: handleVideoUrlSubmit });
-    else if (routeId === "transcripts") renderTranscriptsView(elements.content, project ? project.transcript : null);
+    else if (routeId === "transcripts") renderTranscriptsView(elements.content, project);
     else renderPlaceholderView(elements.content, routeId);
 
     setActiveNavItem(elements.sidebar, routeId);
@@ -72,15 +72,41 @@ const videoOutcomeMessages = {
     created: "Video identified. Project created.",
     attached: "Video identified and added to the current project.",
     unchanged: "This video is already loaded.",
-    replaced: "Video identified. Started a new project — the previous transcript belonged to a different video."
+    start_position_updated: "Same video. Start-position hint updated; transcript kept.",
+    replaced: "Video identified. Started a new project for this video.",
+    cancelled: "Kept the current project. Nothing was changed."
 };
+
+const replaceConfirmationMessage =
+    "A different video was entered. The current project contains a transcript. " +
+    "Replacing it discards the current transcript and project from this session. Replace the current project?";
 
 // Remember the last result so it survives the re-render.
 function setVideoUrlNotice(notice) {
     state.set("ui", { ...state.get("ui"), videoUrlNotice: notice });
 }
 
-// Returns {ok, message} for the form to display. Nothing is fetched.
+function describeOutcome(outcome, identity) {
+    // Cancelled: don't name the rejected video as if it were loaded.
+    if (outcome === "cancelled") return videoOutcomeMessages.cancelled;
+    const label = getPlatformLabel(identity.platform);
+    return `${videoOutcomeMessages[outcome]} (${label} · ${identity.videoId})`;
+}
+
+// Store the chosen project and return the notice to show.
+function commitVideoPlan(videoPlan, confirmed, identity) {
+    const current = state.get("project");
+    const next = finalizeVideoChange(current, videoPlan, { confirmed });
+    const outcome = next === current && videoPlan.requiresConfirmation ? "cancelled" : videoPlan.outcome;
+    const notice = { ok: true, message: describeOutcome(outcome, identity) };
+    setVideoUrlNotice(notice);
+    if (next !== current) state.set("project", next);
+    return notice;
+}
+
+// Returns a notice for the form. A confirmation notice carries
+// onConfirm/onCancel callbacks; nothing changes until one is chosen.
+// Nothing is fetched.
 function handleVideoUrlSubmit(inputValue) {
     const result = resolveVideoUrl(inputValue);
     if (!result.success) {
@@ -90,12 +116,16 @@ function handleVideoUrlSubmit(inputValue) {
         return notice;
     }
 
-    const { project, outcome } = applyVideoIdentity(state.get("project"), result.video);
-    const label = getPlatformLabel(result.video.platform);
-    const notice = { ok: true, message: `${videoOutcomeMessages[outcome]} (${label} · ${result.video.videoId})` };
-    setVideoUrlNotice(notice);
-    if (outcome !== "unchanged") state.set("project", project);
-    return notice;
+    const videoPlan = applyVideoIdentity(state.get("project"), result.video, result.startPosition);
+    if (!videoPlan.requiresConfirmation) return commitVideoPlan(videoPlan, true, result.video);
+
+    return {
+        ok: true,
+        confirm: true,
+        message: replaceConfirmationMessage,
+        onConfirm: () => commitVideoPlan(videoPlan, true, result.video),
+        onCancel: () => commitVideoPlan(videoPlan, false, result.video)
+    };
 }
 
 // ---------- File loading ----------

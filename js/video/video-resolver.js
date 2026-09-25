@@ -12,7 +12,7 @@
 // from success via the `success` flag and an error code.
 // ==========================================================
 
-import { createVideoIdentity } from "./video-model.js";
+import { createVideoIdentity, createStartPosition } from "./video-model.js";
 import * as youtube from "./platforms/youtube.js";
 
 // Registered platform adapters. To add a platform (e.g. Twitch):
@@ -54,8 +54,10 @@ function parseUrlSafely(text) {
  * Resolve a user-provided URL into a video identity.
  *
  * @param {unknown} input  Raw user input (untrusted).
- * @returns {{success:true, video:object} | {success:false, error:{code:string, message:string, detail:object}}}
- *          On success, `video` is a frozen identity from createVideoIdentity().
+ * @returns {{success:true, video:object, startPosition:object|null}
+ *          | {success:false, error:{code:string, message:string, detail:object}}}
+ *          On success, `video` is a frozen identity from createVideoIdentity()
+ *          and `startPosition` is a separate hint (or null) — never identity.
  */
 export function resolveVideoUrl(input) {
     if (typeof input !== "string" || input.trim() === "") {
@@ -98,8 +100,15 @@ export function resolveVideoUrl(input) {
         return failure(extracted.code, extracted.message, { platform: adapter.platformId });
     }
 
+    // Optional per-adapter hint. A bad time value never fails resolution;
+    // it is kept as a malformed/ambiguous hint with seconds = null.
+    const hint = typeof adapter.extractStartPosition === "function"
+        ? adapter.extractStartPosition(parsedUrl)
+        : null;
+
     return {
         success: true,
+        startPosition: hint ? createStartPosition({ ...hint, sourceUrl: input }) : null,
         video: createVideoIdentity({
             platform: adapter.platformId,
             videoId: extracted.videoId,

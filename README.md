@@ -13,17 +13,21 @@ The AI layer will **discover, describe, preserve, and trace** evidence. It will 
 | Stage 1 | Frontend application shell | **Complete** |
 | Stage 1.5 | Transcript architecture foundation | **Complete** |
 | Stage 1.6 | Project + video foundation (URL → video identity) | **Complete** |
+| Stage 1.7 | Hardening + architecture freeze (start hint, safe replace, alignment state) | **Complete** |
 | Stage 2 | Transcript parsing, normalization, validation, and chunking | Not yet implemented |
 
-Nothing after Stage 1.6 exists yet:
+Nothing after Stage 1.7 exists yet. Stage 1.7 is the architecture freeze before transcript acquisition begins (see [Frozen contracts](#frozen-contracts-after-stage-17)).
 - **No format is actually parsed.** Uploaded files are loaded, stored, and shown as raw text, but every transcript currently has 0 segments, and validation runs no checks.
-- **Pasting a video URL only identifies the video.** Stage 1.6 does **not** fetch the title, thumbnail, or duration, retrieve or generate transcripts, or embed or play the video. Nothing is sent over the network.
+- **Pasting a video URL only identifies the video.** It does **not** fetch the title, thumbnail, or duration, retrieve or generate transcripts, or embed or play the video. Nothing is sent over the network.
 
 ## Current capabilities
 
 - Modular frontend (HTML, CSS, vanilla JavaScript ES modules, no build step)
 - Client-side hash navigation (`#dashboard`, `#transcripts`, `#pois`, `#events`, `#clips`, `#analysis`, `#settings`)
 - Video URL input: YouTube links are resolved locally to a video identity (platform, video ID, canonical URL)
+- YouTube `?t=` / `#t=` / embed `start=` kept as a separate, unverified start-position hint
+- Inline confirmation before a different video replaces a project that holds a transcript
+- Transcripts page shows the linked video (platform, ID, title status, source, start hint, alignment)
 - A frozen `Project` in state that links the video and the transcript
 - Transcript file selection for all supported formats
 - Canonical, frozen `TranscriptDocument` stored inside the project
@@ -128,7 +132,10 @@ Project {
   createdAt, updatedAt,           // ISO strings
   video: Video | null,            // see below
   transcript: TranscriptDocument | null,   // stored by reference, unchanged
-  alignment: { status: "unverified", offsetSeconds: null },
+  alignment: {                    // see "Time alignment" below
+    status: "unverified", method: null, evidence: [],
+    offsetSeconds: null, verifiedAt: null
+  },
   analysis: { status: "not_implemented" },   // reserved
   pois: [], events: [], clips: []            // reserved
 }
@@ -136,8 +143,23 @@ Project {
 
 - Projects are deep-frozen. Every change (`withTranscript`, `applyVideoIdentity`) returns a **new** project.
 - Lifecycle: no project → project created → video identified → transcript attached. A transcript can be uploaded before or after a URL is entered.
-- Entering the same video again (in any URL form) changes nothing. Entering a **different** video starts a new project, because the old transcript belonged to the other video. The UI says so.
-- `alignment` records how transcript time relates to video time. It is `unverified` because nothing has proven that transcript `00:10:00` equals video `00:10:00`. It is **not** assumed.
+- Entering the **same** video again (any URL form) never creates a new project or drops the transcript. If the URL has a new time value, only `video.startPosition` changes. A URL with no time value leaves the existing hint alone.
+- Entering a **different** video starts a new project, because the old transcript belonged to the other video. If the current project has a transcript, an inline confirmation (**Cancel** / **Replace Project**) appears first. Cancel leaves the current project exactly as it was, as the same object. Transcripts are never merged or carried over to another video.
+- The decision is pure. `applyVideoIdentity()` returns a plan `{project, outcome, requiresConfirmation}`, and `finalizeVideoChange(current, plan, {confirmed})` picks what to keep. The coordinator only shows the prompt and stores the result.
+
+### Time alignment
+
+`project.alignment` answers one question: do transcript timestamps correspond to positions on this video's timeline, and with what offset?
+
+| Status | Meaning | Used now? |
+|---|---|---|
+| `unverified` | The relationship has **not** been established | Yes — the only status through Stage 1.7 |
+| `assumed` | A documented basis exists (recorded in `method`) but nothing independently checked it | Future |
+| `verified` | Defined evidence (in `evidence`) establishes the relationship; `verifiedAt` is set | Future |
+
+- `method: null` and `evidence: []` stay empty until a later stage defines what methods and evidence records are.
+- Having timestamps, a plausible duration, or a URL `?t=` is **not** evidence of alignment: data existing is not the same as data proving alignment.
+- `offsetSeconds: null` means unknown, not zero.
 
 ### Transcript ↔ video relationship
 
@@ -168,9 +190,19 @@ Video {
     title: null, thumbnailUrl: null, durationSeconds: null,
     status: "unknown",            // unknown | loading | loaded | unavailable | failed
     provider: null, retrievedAt: null
+  },
+  startPosition: {                // optional HINT from the URL, or null. NOT identity.
+    raw: "1m20s",                 // exact text from the URL (source)
+    seconds: 80,                  // derived; null unless status is "parsed"
+    status: "parsed",             // parsed | malformed | ambiguous  (Stage 1.5 timestamp statuses)
+    source: "url",
+    sourceUrl: "https://youtu.be/dQw4w9WgXcQ?t=1m20s",   // exact URL the hint came from
+    verified: false               // never checked against the video
   }
 }
 ```
+
+`startPosition` reuses the Stage 1.5 timestamp shape `{raw, seconds, status}` (`createTimestamp`), so there is no second timestamp system. `identity.url` stays the URL that first identified the video. When the same video is re-entered with a new time, only `startPosition` (and its `sourceUrl`) changes.
 
 `null` means "not acquired", not "empty". "Not loaded" in the UI is display text only and is never stored.
 
@@ -179,7 +211,7 @@ Video {
 `js/video/video-resolver.js` exports `resolveVideoUrl(input)`. It is pure: no network, no DOM, and it never throws on bad input.
 
 ```js
-{ success: true,  video: { platform, videoId, canonicalUrl, url } }
+{ success: true,  video: { platform, videoId, canonicalUrl, url }, startPosition: {...} | null }
 { success: false, error: { code, message, detail } }
 ```
 
@@ -189,11 +221,13 @@ Error codes: `empty_url`, `url_too_long`, `malformed_url`, `unsupported_protocol
 
 ### Supported platform: YouTube
 
-`js/video/platforms/youtube.js` handles `youtube.com`, `www.`, `m.`, and `music.youtube.com` (`/watch?v=`, `/embed/`, `/shorts/`, `/live/`, `/v/`), `youtu.be/ID`, and `youtube-nocookie.com/embed/`. The ID must be 11 characters of `[A-Za-z0-9_-]`. Parameters that don't change identity (`t`, `si`, `list`, `feature`, `start`) are ignored. Channel, playlist, and search pages fail with `missing_video_id`. Look-alike hosts such as `youtube.com.evil.example` are rejected.
+`js/video/platforms/youtube.js` handles `youtube.com`, `www.`, `m.`, and `music.youtube.com` (`/watch?v=`, `/embed/`, `/shorts/`, `/live/`, `/v/`), `youtu.be/ID`, and `youtube-nocookie.com/embed/`. The ID must be 11 characters of `[A-Za-z0-9_-]`. Parameters that don't change identity (`si`, `list`, `feature`) are ignored.
+
+Start-position hint: `t` (query or `#t=` fragment) and embed `start` accept `120`, `120s`, `1m20s`, and `1h2m3s` (units in h→m→s order). Anything else (`abc`, `1m20`, `1.5`, `-5`, empty, out-of-range) gives `status: "malformed"` with `seconds: null`. Conflicting values (`t=10&t=20`) give `status: "ambiguous"` with `seconds: null`. A bad time value never fails URL resolution and is never turned into a guessed position. The canonical URL never includes it. Channel, playlist, and search pages fail with `missing_video_id`. Look-alike hosts such as `youtube.com.evil.example` are rejected.
 
 ### Adding a platform later
 
-Create `js/video/platforms/<name>.js` exporting `platformId`, `label`, `matchesHost(hostname)`, `extractVideoId(url)`, and `buildCanonicalUrl(id)`, then add it to `platformAdapters` in the resolver. The project model doesn't change. Twitch and other platforms are **not** implemented.
+Create `js/video/platforms/<name>.js` exporting `platformId`, `label`, `matchesHost(hostname)`, `extractVideoId(url)`, `buildCanonicalUrl(id)`, and optionally `extractStartPosition(url)`, then add it to `platformAdapters` in the resolver. The project model doesn't change. Twitch and other platforms are **not** implemented.
 
 ## Provenance philosophy
 
@@ -236,12 +270,12 @@ vod-analyzer/
     │   ├── ids.js             Random prefixed ids (project-…, tx-…)
     │   ├── project.js         Project model: video + transcript container, lifecycle
     │   ├── devtools.js        window.vodAnalyzer console helpers + self-tests
-    │   └── devtools-project-tests.js   Stage 1.6 self-tests (project, video, resolver)
+    │   └── devtools-project-tests.js   Stage 1.6 + 1.7 self-tests
     ├── video/
     │   ├── video-model.js     Video identity vs. metadata, metadata status
     │   ├── video-resolver.js  Platform-neutral URL → identity resolver
     │   └── platforms/
-    │       └── youtube.js     YouTube URL rules (identity only)
+    │       └── youtube.js     YouTube URL rules (identity + start-position hint)
     ├── transcript/
     │   ├── formats.js         Single source of truth for supported formats
     │   ├── model.js           Canonical schema factories (document, segment, timestamp, speaker)
@@ -257,7 +291,7 @@ vod-analyzer/
         ├── dom.js             Safe DOM builders (textContent only)
         ├── sidebar.js         Section navigation
         ├── dashboard.js       Dashboard view + shared transcript summary card
-        ├── project-panel.js   Video URL form + Project card
+        ├── project-panel.js   Video URL form (+ inline replace confirmation), Project card, Linked video card
         └── transcripts.js     Transcripts view (source details, layers, raw preview)
 ```
 
@@ -270,7 +304,7 @@ No install or build step. Open `index.html` through any local static server. On 
 Open the browser console (Acode: enable "Show Console Toggler" in Preview settings) and run:
 
 ```js
-vodAnalyzer.runSelfTests()      // 36 architectural checks, printed as a table
+vodAnalyzer.runSelfTests()      // 51 architectural checks, printed as a table
 vodAnalyzer.inspectProject()    // the frozen Project (or null)
 vodAnalyzer.inspectTranscript() // the frozen TranscriptDocument in the project
 vodAnalyzer.resolveVideoUrl("https://youtu.be/dQw4w9WgXcQ")
@@ -303,6 +337,23 @@ The 13 Stage 1.6 checks cover:
 - attach order
 - alignment defaulting to `unverified`
 
+The 15 Stage 1.7 checks cover:
+- `t` formats converted to seconds
+- hint shape, freezing, and `verified: false`
+- no `t` giving `null` (not 0)
+- 9 malformed or ambiguous values never producing a position
+- the hint staying out of identity and the canonical URL
+- the original URL staying exact
+- same video + new `t` updating only the hint
+- same video without `t` staying unchanged
+- replacing without a transcript (no confirmation)
+- replacing with a transcript (confirmation required)
+- Cancel keeping the same project
+- Replace creating a clean project
+- alignment staying unverified with no method or evidence in every path
+- the Transcripts page showing the linked video (with a hostile URL, and no `a`/`iframe`/`img` elements)
+- the dashboard status card
+
 ## Privacy and security
 
 - Files are read locally with `File.text()` and kept in memory only.
@@ -321,17 +372,66 @@ The 13 Stage 1.6 checks cover:
 - Video: identity only. Title, thumbnail, and duration are never fetched (`metadata.status` stays `unknown`).
 - No transcript retrieval from URLs, no embedded player, no playback, no seeking.
 - Only YouTube is recognized. YouTube ID validation is by shape (11 characters). The resolver cannot tell whether the video actually exists or is public.
-- A timestamp in the URL (`?t=90`) is ignored, not stored.
+- The start-position hint is stored and shown only. Nothing uses it for playback yet, and it's never checked against the video's length.
+- Replace confirmation is inline and in-page. Navigating away while it's showing cancels it.
 - The whole file is read into memory (no streaming or workers yet).
+
+## Persistence boundary (documented, not implemented)
+
+**Current behaviour:** the project exists only in memory. Reloading or closing the page discards the video, transcript, and everything linked to them.
+
+**Requirement for a future persistence stage:**
+- Persist the **canonical project** as a whole, not a parallel model. There will be no `savedVideo`, `savedTranscript`, or `savedPOIs` stores alongside state. What is saved is:
+  ```
+  PROJECT
+  ├── VIDEO (identity, metadata, startPosition)
+  ├── TRANSCRIPT (source, rawText byte-for-byte, parse, segments, validation, chunks, processing)
+  ├── ALIGNMENT
+  ├── ANALYSIS
+  ├── POIs
+  ├── EVENTS
+  └── CLIPS
+  ```
+- Restoring must produce the same frozen `Project` shape: same ids, same segment ids, same `schemaVersion` fields. Restored data enters state through `state.set("project", …)` like any other project.
+- `rawText` must round-trip exactly (including CRLF and Unicode). Derived layers must not replace source fields when saved.
+- `schemaVersion` fields exist so a future loader can detect older saved projects. Migrations must add derived data, never rewrite source evidence.
+- **The storage technology is intentionally not chosen yet** (localStorage, IndexedDB, filesystem, backend, or cloud). That decision belongs to the persistence stage.
+
+## Frozen contracts (after Stage 1.7)
+
+These are fixed unless a later implementation exposes a concrete contradiction:
+
+| Contract | Rule |
+|---|---|
+| Project | The project is the canonical container for VOD analysis. |
+| Video | Identity is separate from metadata; a start hint is separate from both. |
+| Transcript | Source and derived information stay separate; `rawText` is immutable. |
+| Provenance | Evidence traces back to transcript segment ids. |
+| Timestamp | Stage 1.5 `{raw, seconds, status}` is the only timestamp shape. |
+| Alignment | Explicit state, never assumed verified without evidence. |
+| Resolver | Identifies a video; never acquires its content. |
+| Parser | Parsing is separate from transcript acquisition. |
+| Player | Playback is separate from video identity. |
+| Analysis | AI analysis is separate from transcript processing. |
+| POI | POIs reference evidence; they never replace it. |
+| Persistence | Serialize the canonical project; no parallel state model. |
+
+```
+URL → VIDEO RESOLVER → VIDEO IDENTITY → METADATA ACQUISITION → TRANSCRIPT ACQUISITION
+    → TRANSCRIPT PARSER → CANONICAL TRANSCRIPT → VALIDATOR → CHUNKER → AI ANALYSIS
+    → EVIDENCE / POIs → VIDEO PLAYER → TIMESTAMP SEEKING
+```
+
+The AI layer will discover, describe, trace, and preserve uncertainty. It will not rank, pick "best" clips, predict virality, or decide what to publish. The human is the final reviewer.
 
 ## Not implemented on purpose (later stages)
 
-Transcript download or generation, YouTube API / IFrame Player API, embedded video player, playback controls, timestamp seeking, transcript/video sync, POI generation, AI providers, clip generation or ranking, backend, database, authentication, cloud storage, and Discord integration.
+Transcript download or generation, YouTube API / IFrame Player API, metadata fetching, embedded video player, playback controls, timestamp seeking, transcript/video sync, POI generation, event reconciliation, AI providers, clip generation or ranking, persistence (localStorage / IndexedDB / backend), database, authentication, cloud storage, payments, Discord integration, and platforms other than YouTube.
 
 ## Future video + transcript workflow
 
 ```
-URL → VIDEO RESOLVER (1.6) → VIDEO METADATA PROVIDER → TRANSCRIPT PROVIDER
+URL → VIDEO RESOLVER (1.6/1.7) → VIDEO METADATA PROVIDER → TRANSCRIPT PROVIDER
     → TRANSCRIPT PARSER (Stage 2) → VALIDATOR → CHUNKER → AI ANALYZER
     → POI ENGINE → VIDEO PLAYER (player.seekTo(poi.videoPosition.startSeconds))
 ```

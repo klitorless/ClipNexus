@@ -12,9 +12,16 @@
 //   https://www.youtube.com/live/ID
 //   https://www.youtube.com/v/ID          (legacy)
 //
-// Unrelated query parameters (t, si, list, feature, ...) do
+// Unrelated query parameters (si, list, feature, ...) do
 // not affect identity and are ignored.
+//
+// Start position: "t" (and "start" on embed URLs) is read as a
+// separate HINT, never as identity. Accepted forms:
+//   120   120s   1m20s   1h2m3s   (also "#t=" fragments)
+// Anything else is reported as malformed with seconds = null.
 // ==========================================================
+
+import { TIMESTAMP_STATUS } from "../../transcript/model.js";
 
 export const platformId = "youtube";
 export const label = "YouTube";
@@ -73,4 +80,46 @@ export function extractVideoId(parsedUrl) {
         };
     }
     return { success: true, videoId: candidate };
+}
+
+// ---------- Start-position hint ----------
+
+// Whole seconds, or h/m/s units in order, at least one present.
+const plainSecondsPattern = /^(\d+)s?$/;
+const unitPattern = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/;
+
+function parseTimeValue(raw) {
+    const plain = plainSecondsPattern.exec(raw);
+    if (plain) return Number(plain[1]);
+    const units = unitPattern.exec(raw);
+    if (!units || raw === "") return null;
+    const [, hours = "0", minutes = "0", seconds = "0"] = units;
+    return Number(hours) * 3600 + Number(minutes) * 60 + Number(seconds);
+}
+
+function collectTimeValues(parsedUrl) {
+    const values = [...parsedUrl.searchParams.getAll("t"), ...parsedUrl.searchParams.getAll("start")];
+    const hash = new URLSearchParams(parsedUrl.hash.replace(/^#/, ""));
+    return [...values, ...hash.getAll("t")];
+}
+
+/**
+ * @param {URL} parsedUrl
+ * @returns {null | {raw:string, seconds:number|null, status:string}}
+ *          null when the URL carries no time parameter at all.
+ */
+export function extractStartPosition(parsedUrl) {
+    const values = collectTimeValues(parsedUrl);
+    if (values.length === 0) return null;
+
+    const raw = values.join(",");
+    const parsed = values.map(parseTimeValue);
+    if (parsed.some((seconds) => seconds === null || !Number.isSafeInteger(seconds))) {
+        return { raw, seconds: null, status: TIMESTAMP_STATUS.MALFORMED };
+    }
+    // Several time values that disagree: do not pick one.
+    if (new Set(parsed).size > 1) {
+        return { raw, seconds: null, status: TIMESTAMP_STATUS.AMBIGUOUS };
+    }
+    return { raw, seconds: parsed[0], status: TIMESTAMP_STATUS.PARSED };
 }
