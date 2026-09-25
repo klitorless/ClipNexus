@@ -2,55 +2,36 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
-  >
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="ClipNexus — From VOD to Clip Intelligence. A modular, provider-agnostic VOD transcript analysis platform.">
+  <title>ClipNexus — From VOD to Clip Intelligence</title>
 
-  <meta
-    name="description"
-    content="ClipNexus — modular, provider-agnostic VOD transcript analysis and clip intelligence."
-  >
-
-  <title>ClipNexus — VOD Intelligence</title>
-
-  <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-
-  <link
-    href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Rajdhani:wght@400;500;600;700&display=swap"
-    rel="stylesheet"
-  >
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <style>
     :root {
-      --bg: #08090d;
-      --bg-soft: #0d0f15;
-      --panel: #11141c;
-      --panel-hover: #151925;
-
-      --border: #252b38;
-      --border-bright: #394152;
-
-      --text: #e8eaf0;
-      --text-soft: #a5aab7;
-      --text-muted: #6e7482;
-
-      --accent: #d8b46a;
-      --accent-soft: rgba(216, 180, 106, 0.12);
-      --accent-border: rgba(216, 180, 106, 0.35);
-
-      --success: #73c991;
-      --danger: #d97979;
-
-      --max-width: 1180px;
-
-      --radius: 10px;
+      --bg: #090b10;
+      --bg-soft: #0e1118;
+      --card: #11151e;
+      --card-hover: #151a25;
+      --text: #eef2f7;
+      --muted: #9ca7b8;
+      --border: #252c38;
+      --accent: #c9a45c;
+      --accent-soft: rgba(201, 164, 92, 0.12);
+      --success: #79c991;
+      --info: #7ea8d8;
+      --shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
+      --radius: 16px;
+      --max: 1180px;
     }
 
     * {
       box-sizing: border-box;
+      margin: 0;
+      padding: 0;
     }
 
     html {
@@ -58,22 +39,14 @@
     }
 
     body {
-      margin: 0;
+      min-height: 100vh;
       background:
-        radial-gradient(
-          circle at 50% -10%,
-          rgba(216, 180, 106, 0.09),
-          transparent 35%
-        ),
+        radial-gradient(circle at 50% -10%, rgba(201, 164, 92, 0.10), transparent 38%),
         var(--bg);
-
       color: var(--text);
-
       font-family: "Rajdhani", sans-serif;
-      font-size: 17px;
-      line-height: 1.55;
-
-      overflow-x: hidden;
+      font-size: 18px;
+      line-height: 1.5;
     }
 
     a {
@@ -81,40 +54,29 @@
       text-decoration: none;
     }
 
-    button {
-      font: inherit;
+    button,
+    a {
+      -webkit-tap-highlight-color: transparent;
     }
 
     .container {
-      width: min(
-        calc(100% - 40px),
-        var(--max-width)
-      );
-
+      width: min(calc(100% - 32px), var(--max));
       margin: 0 auto;
     }
 
-    /* =========================
-       NAVIGATION
-       ========================= */
+    /* Navigation */
 
     .nav {
-      position: fixed;
+      position: sticky;
       top: 0;
-      left: 0;
-      right: 0;
-
-      z-index: 1000;
-
-      background: rgba(8, 9, 13, 0.88);
-      backdrop-filter: blur(12px);
-
-      border-bottom: 1px solid rgba(255,255,255,0.04);
+      z-index: 100;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      background: rgba(9, 11, 16, 0.88);
+      backdrop-filter: blur(14px);
     }
 
     .nav-inner {
-      min-height: 70px;
-
+      min-height: 72px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -122,34 +84,25 @@
     }
 
     .brand {
-      display: flex;
+      display: inline-flex;
       align-items: center;
       gap: 10px;
+      font-family: "Cinzel", serif;
+      font-size: 1.2rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
     }
 
     .brand-mark {
       width: 32px;
       height: 32px;
-
       display: grid;
       place-items: center;
-
-      border: 1px solid var(--accent-border);
-      background: var(--accent-soft);
-
+      border: 1px solid var(--accent);
       color: var(--accent);
-
+      border-radius: 8px;
       font-family: "Cinzel", serif;
-      font-weight: 800;
-
-      border-radius: 6px;
-    }
-
-    .brand-name {
-      font-family: "Cinzel", serif;
-      font-size: 19px;
-      font-weight: 800;
-      letter-spacing: 1px;
+      font-size: 0.85rem;
     }
 
     .nav-links {
@@ -159,892 +112,432 @@
     }
 
     .nav-links a {
-      color: var(--text-soft);
-      font-size: 15px;
+      color: var(--muted);
       font-weight: 600;
       transition: color 0.2s ease;
     }
 
     .nav-links a:hover {
-      color: var(--accent);
+      color: var(--text);
     }
 
     .nav-cta {
-      padding: 8px 15px;
-
-      border: 1px solid var(--accent-border);
-      border-radius: 6px;
-
+      padding: 9px 16px;
+      border: 1px solid var(--accent);
+      border-radius: 8px;
       color: var(--accent) !important;
-
-      background: var(--accent-soft);
     }
 
     .menu-button {
       display: none;
-
-      background: transparent;
       border: 1px solid var(--border);
-
+      background: var(--card);
       color: var(--text);
-
-      padding: 7px 10px;
-      border-radius: 6px;
-
+      border-radius: 8px;
+      padding: 8px 11px;
+      font: inherit;
       cursor: pointer;
     }
 
-    /* =========================
-       HERO
-       ========================= */
+    /* Hero */
 
     .hero {
-      min-height: 760px;
-
-      display: flex;
-      align-items: center;
-
-      padding: 140px 0 90px;
-
-      position: relative;
-    }
-
-    .hero-grid {
-      display: grid;
-      grid-template-columns: 1.05fr 0.95fr;
-
-      gap: 70px;
-
-      align-items: center;
+      padding: 110px 0 90px;
+      text-align: center;
     }
 
     .eyebrow {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-
-      padding: 6px 11px;
-
-      border: 1px solid var(--accent-border);
-      border-radius: 999px;
-
+      padding: 6px 12px;
+      border: 1px solid rgba(201, 164, 92, 0.28);
       background: var(--accent-soft);
-
       color: var(--accent);
-
-      font-size: 13px;
+      border-radius: 999px;
+      font-size: 0.85rem;
       font-weight: 700;
-      letter-spacing: 1px;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
     }
 
-    .eyebrow-dot {
-      width: 7px;
-      height: 7px;
-
-      border-radius: 50%;
-      background: var(--success);
-
-      box-shadow: 0 0 10px rgba(115, 201, 145, 0.6);
-    }
-
-    h1 {
-      margin: 22px 0 20px;
-
+    .hero h1 {
+      max-width: 900px;
+      margin: 24px auto 18px;
       font-family: "Cinzel", serif;
-      font-size: clamp(42px, 6vw, 76px);
-
-      line-height: 1.03;
-
-      letter-spacing: -1px;
+      font-size: clamp(2.5rem, 7vw, 5.5rem);
+      line-height: 1.02;
+      letter-spacing: -0.02em;
     }
 
     .hero h1 span {
       color: var(--accent);
     }
 
-    .hero-description {
-      max-width: 650px;
-
-      color: var(--text-soft);
-
-      font-size: 20px;
-      line-height: 1.6;
+    .hero p {
+      max-width: 720px;
+      margin: 0 auto;
+      color: var(--muted);
+      font-size: clamp(1.05rem, 2vw, 1.3rem);
     }
 
     .hero-actions {
+      margin-top: 34px;
       display: flex;
+      justify-content: center;
       flex-wrap: wrap;
       gap: 12px;
-
-      margin-top: 32px;
     }
 
     .button {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-
-      min-height: 46px;
-
-      padding: 10px 19px;
-
-      border-radius: 6px;
-
-      border: 1px solid var(--border-bright);
-
+      min-height: 48px;
+      padding: 0 20px;
+      border-radius: 9px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
       font-weight: 700;
-
-      cursor: pointer;
-
       transition:
         transform 0.2s ease,
-        border-color 0.2s ease,
-        background 0.2s ease;
+        background 0.2s ease,
+        border-color 0.2s ease;
     }
 
     .button:hover {
       transform: translateY(-2px);
-      border-color: var(--accent-border);
+      background: var(--card-hover);
+      border-color: #394252;
     }
 
-    .button-primary {
+    .button.primary {
+      border-color: var(--accent);
       background: var(--accent);
       color: #111;
-
-      border-color: var(--accent);
     }
 
-    .button-secondary {
-      background: var(--panel);
-      color: var(--text);
-    }
-
-    /* =========================
-       HERO PIPELINE CARD
-       ========================= */
-
-    .pipeline-card {
-      position: relative;
-
-      padding: 24px;
-
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-
-      background:
-        linear-gradient(
-          145deg,
-          rgba(255,255,255,0.025),
-          rgba(255,255,255,0)
-        ),
-        var(--panel);
-
-      box-shadow:
-        0 25px 70px rgba(0,0,0,0.35);
-    }
-
-    .pipeline-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-
-      padding-bottom: 15px;
-
-      margin-bottom: 18px;
-
-      border-bottom: 1px solid var(--border);
-    }
-
-    .pipeline-title {
-      font-family: "Cinzel", serif;
-      font-size: 14px;
-      letter-spacing: 1px;
-    }
-
-    .status {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-
-      color: var(--success);
-
-      font-size: 12px;
-      font-weight: 700;
-      text-transform: uppercase;
-    }
-
-    .status-dot {
-      width: 6px;
-      height: 6px;
-
-      background: var(--success);
-      border-radius: 50%;
-    }
+    /* Pipeline */
 
     .pipeline {
-      display: flex;
-      flex-direction: column;
-      gap: 0;
-    }
-
-    .pipeline-node {
+      margin-top: 65px;
       display: grid;
-      grid-template-columns: 40px 1fr;
-
-      min-height: 70px;
-
-      position: relative;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 10px;
     }
 
-    .pipeline-node:not(:last-child)::after {
-      content: "";
+    .pipeline-step {
+      position: relative;
+      padding: 18px 10px;
+      border: 1px solid var(--border);
+      background: rgba(17, 21, 30, 0.82);
+      border-radius: 12px;
+    }
 
+    .pipeline-step strong {
+      display: block;
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+
+    .pipeline-step small {
+      color: var(--muted);
+      font-size: 0.76rem;
+    }
+
+    .pipeline-step:not(:last-child)::after {
+      content: "→";
       position: absolute;
-
-      left: 19px;
-      top: 39px;
-      bottom: -1px;
-
-      width: 1px;
-
-      background: var(--border-bright);
-    }
-
-    .node-icon {
-      width: 38px;
-      height: 38px;
-
-      display: grid;
-      place-items: center;
-
-      border: 1px solid var(--border-bright);
-      border-radius: 7px;
-
-      background: var(--bg-soft);
-
+      right: -15px;
+      top: 50%;
+      transform: translateY(-50%);
       color: var(--accent);
-
-      font-weight: 700;
-
-      position: relative;
       z-index: 2;
-    }
-
-    .node-content {
-      padding: 2px 0 20px 14px;
-    }
-
-    .node-title {
-      font-size: 17px;
       font-weight: 700;
     }
 
-    .node-description {
-      color: var(--text-muted);
-
-      font-size: 13px;
-    }
-
-    /* =========================
-       SECTION BASICS
-       ========================= */
+    /* Sections */
 
     section {
-      padding: 100px 0;
+      padding: 90px 0;
     }
 
     .section-heading {
       max-width: 720px;
-
-      margin-bottom: 48px;
+      margin-bottom: 40px;
     }
 
-    .section-label {
+    .section-heading .label {
       color: var(--accent);
-
-      font-size: 13px;
       font-weight: 700;
-
-      letter-spacing: 2px;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
+      font-size: 0.8rem;
     }
 
-    h2 {
-      margin: 9px 0 15px;
-
+    .section-heading h2 {
+      margin-top: 8px;
       font-family: "Cinzel", serif;
-
-      font-size: clamp(30px, 4vw, 48px);
-      line-height: 1.15;
+      font-size: clamp(1.8rem, 4vw, 3rem);
+      line-height: 1.1;
     }
 
-    .section-description {
-      color: var(--text-soft);
-
-      font-size: 18px;
+    .section-heading p {
+      margin-top: 14px;
+      color: var(--muted);
     }
 
-    /* =========================
-       PROBLEM SECTION
-       ========================= */
-
-    .problem {
-      border-top: 1px solid var(--border);
-      border-bottom: 1px solid var(--border);
-
-      background: var(--bg-soft);
-    }
-
-    .problem-grid {
+    .grid {
       display: grid;
-
-      grid-template-columns:
-        repeat(3, 1fr);
-
-      gap: 16px;
+      gap: 18px;
     }
 
-    .feature-card {
-      padding: 26px;
-
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-
-      background: var(--panel);
-
-      transition:
-        transform 0.2s ease,
-        border-color 0.2s ease;
+    .grid.three {
+      grid-template-columns: repeat(3, 1fr);
     }
 
-    .feature-card:hover {
-      transform: translateY(-4px);
-      border-color: var(--accent-border);
+    .grid.two {
+      grid-template-columns: repeat(2, 1fr);
     }
 
-    .feature-number {
-      color: var(--accent);
-
-      font-family: "Cinzel", serif;
-      font-size: 13px;
-    }
-
-    .feature-card h3 {
-      margin: 12px 0 8px;
-
-      font-size: 21px;
-    }
-
-    .feature-card p {
-      margin: 0;
-
-      color: var(--text-muted);
-      font-size: 15px;
-    }
-
-    /* =========================
-       EVIDENCE
-       ========================= */
-
-    .evidence-grid {
-      display: grid;
-
-      grid-template-columns:
-        1fr 1fr;
-
-      gap: 20px;
-    }
-
-    .evidence-panel {
+    .card {
       padding: 28px;
-
       border: 1px solid var(--border);
-      border-radius: var(--radius);
-
-      background: var(--panel);
-    }
-
-    .evidence-panel.source {
-      border-top: 2px solid var(--success);
-    }
-
-    .evidence-panel.derived {
-      border-top: 2px solid var(--accent);
-    }
-
-    .panel-label {
-      margin-bottom: 20px;
-
-      font-size: 13px;
-      font-weight: 700;
-
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-    }
-
-    .source .panel-label {
-      color: var(--success);
-    }
-
-    .derived .panel-label {
-      color: var(--accent);
-    }
-
-    .data-list {
-      display: grid;
-
-      gap: 10px;
-
-      margin: 0;
-      padding: 0;
-
-      list-style: none;
-    }
-
-    .data-list li {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-
-      color: var(--text-soft);
-
-      padding-bottom: 10px;
-
-      border-bottom: 1px solid var(--border);
-    }
-
-    .data-list li:last-child {
-      padding-bottom: 0;
-      border-bottom: 0;
-    }
-
-    .data-list li::before {
-      content: "›";
-
-      color: var(--accent);
-      font-weight: 700;
-    }
-
-    /* =========================
-       WORKFLOW
-       ========================= */
-
-    .workflow {
-      background: var(--bg-soft);
-
-      border-top: 1px solid var(--border);
-      border-bottom: 1px solid var(--border);
-    }
-
-    .workflow-line {
-      display: grid;
-
-      grid-template-columns:
-        repeat(6, 1fr);
-
-      gap: 8px;
-    }
-
-    .workflow-step {
-      position: relative;
-
-      padding: 22px 16px;
-
-      border: 1px solid var(--border);
-      background: var(--panel);
-
-      min-height: 150px;
-    }
-
-    .workflow-step:first-child {
-      border-radius: 8px 0 0 8px;
-    }
-
-    .workflow-step:last-child {
-      border-radius: 0 8px 8px 0;
-    }
-
-    .workflow-step-number {
-      color: var(--accent);
-
-      font-family: "Cinzel", serif;
-
-      font-size: 12px;
-    }
-
-    .workflow-step h3 {
-      margin: 10px 0 5px;
-
-      font-size: 18px;
-    }
-
-    .workflow-step p {
-      margin: 0;
-
-      color: var(--text-muted);
-
-      font-size: 13px;
-    }
-
-    /* =========================
-       HUMAN CONTROL
-       ========================= */
-
-    .control-box {
-      padding: 45px;
-
-      border: 1px solid var(--accent-border);
-      border-radius: var(--radius);
-
       background:
         linear-gradient(
-          135deg,
-          var(--accent-soft),
-          transparent 60%
+          145deg,
+          rgba(17,21,30,0.96),
+          rgba(12,15,22,0.96)
         );
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
     }
 
-    .control-box h2 {
-      max-width: 700px;
-    }
-
-    .control-box p {
-      max-width: 760px;
-
-      color: var(--text-soft);
-
-      font-size: 18px;
-    }
-
-    .principles {
+    .card-icon {
+      width: 42px;
+      height: 42px;
       display: grid;
-
-      grid-template-columns:
-        repeat(3, 1fr);
-
-      gap: 14px;
-
-      margin-top: 30px;
+      place-items: center;
+      margin-bottom: 18px;
+      border: 1px solid rgba(201,164,92,0.3);
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-radius: 10px;
+      font-weight: 800;
     }
+
+    .card h3 {
+      margin-bottom: 8px;
+      font-size: 1.35rem;
+    }
+
+    .card p {
+      color: var(--muted);
+    }
+
+    /* Evidence */
+
+    .evidence-box {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--card);
+    }
+
+    .evidence-column {
+      padding: 34px;
+    }
+
+    .evidence-column + .evidence-column {
+      border-left: 1px solid var(--border);
+    }
+
+    .evidence-column h3 {
+      margin-bottom: 10px;
+    }
+
+    .evidence-column p {
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    .evidence-column ul {
+      list-style: none;
+      display: grid;
+      gap: 10px;
+    }
+
+    .evidence-column li {
+      color: var(--muted);
+    }
+
+    .evidence-column li::before {
+      content: "✓";
+      margin-right: 9px;
+      color: var(--success);
+      font-weight: 700;
+    }
+
+    /* Workflow */
+
+    .workflow {
+      display: grid;
+      gap: 14px;
+    }
+
+    .workflow-item {
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      gap: 18px;
+      align-items: start;
+      padding: 20px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--card);
+    }
+
+    .workflow-number {
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--accent);
+      border-radius: 50%;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .workflow-item h3 {
+      margin-bottom: 4px;
+    }
+
+    .workflow-item p {
+      color: var(--muted);
+    }
+
+    /* Human control */
 
     .principle {
-      padding: 18px;
-
-      border: 1px solid var(--border);
-
-      background: rgba(0,0,0,0.15);
+      text-align: center;
+      padding: 65px 25px;
+      border: 1px solid rgba(201,164,92,0.24);
+      background:
+        radial-gradient(
+          circle at center,
+          rgba(201,164,92,0.08),
+          transparent 55%
+        ),
+        var(--card);
+      border-radius: var(--radius);
     }
 
-    .principle strong {
-      display: block;
-
-      margin-bottom: 4px;
-
-      color: var(--text);
+    .principle h2 {
+      max-width: 800px;
+      margin: 0 auto 14px;
+      font-family: "Cinzel", serif;
+      font-size: clamp(2rem, 5vw, 3.5rem);
     }
 
-    .principle span {
-      color: var(--text-muted);
-
-      font-size: 14px;
+    .principle p {
+      max-width: 680px;
+      margin: 0 auto;
+      color: var(--muted);
+      font-size: 1.1rem;
     }
 
-    /* =========================
-       ROADMAP
-       ========================= */
+    /* Roadmap */
 
     .roadmap {
       display: grid;
-
       gap: 12px;
     }
 
-    .roadmap-item {
+    .roadmap-row {
       display: grid;
-
-      grid-template-columns:
-        120px 1fr auto;
-
+      grid-template-columns: 180px 1fr 120px;
       gap: 20px;
-
       align-items: center;
-
-      padding: 20px;
-
+      padding: 18px 20px;
       border: 1px solid var(--border);
-      background: var(--panel);
+      background: var(--card);
+      border-radius: 10px;
     }
 
     .roadmap-stage {
-      color: var(--accent);
-
-      font-family: "Cinzel", serif;
-
-      font-size: 13px;
       font-weight: 700;
     }
 
-    .roadmap-content strong {
-      display: block;
-
-      font-size: 18px;
+    .roadmap-description {
+      color: var(--muted);
     }
 
-    .roadmap-content span {
-      color: var(--text-muted);
-
-      font-size: 14px;
-    }
-
-    .roadmap-status {
-      padding: 4px 9px;
-
-      border: 1px solid var(--border);
-
+    .status {
+      justify-self: end;
+      padding: 5px 10px;
       border-radius: 999px;
-
-      color: var(--text-muted);
-
-      font-size: 11px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.8rem;
       font-weight: 700;
-
-      text-transform: uppercase;
     }
 
-    .roadmap-item.complete .roadmap-status {
+    .status.complete {
+      border-color: rgba(121,201,145,0.35);
       color: var(--success);
-      border-color: rgba(115,201,145,0.25);
     }
 
-    .roadmap-item.current {
-      border-color: var(--accent-border);
+    .status.active {
+      border-color: rgba(126,168,216,0.35);
+      color: var(--info);
     }
 
-    .roadmap-item.current .roadmap-status {
-      color: var(--accent);
-      border-color: var(--accent-border);
-      background: var(--accent-soft);
-    }
-
-    /* =========================
-       CTA
-       ========================= */
+    /* CTA */
 
     .final-cta {
       text-align: center;
-
-      padding: 110px 0 130px;
-
-      border-top: 1px solid var(--border);
-
-      background:
-        radial-gradient(
-          circle at 50% 100%,
-          rgba(216,180,106,0.08),
-          transparent 45%
-        );
+      padding: 95px 0 110px;
     }
 
     .final-cta h2 {
-      max-width: 800px;
-
-      margin-left: auto;
-      margin-right: auto;
+      margin-bottom: 14px;
+      font-family: "Cinzel", serif;
+      font-size: clamp(2rem, 5vw, 3.5rem);
     }
 
     .final-cta p {
       max-width: 650px;
-
       margin: 0 auto;
-
-      color: var(--text-soft);
-
-      font-size: 18px;
+      color: var(--muted);
     }
 
-    .final-actions {
-      display: flex;
-
-      justify-content: center;
-
-      gap: 12px;
-
-      margin-top: 30px;
-
-      flex-wrap: wrap;
+    .final-cta .hero-actions {
+      margin-top: 28px;
     }
 
-    /* =========================
-       FOOTER
-       ========================= */
+    /* Footer */
 
     footer {
       border-top: 1px solid var(--border);
-
       padding: 28px 0;
-
-      color: var(--text-muted);
-
-      font-size: 13px;
+      color: var(--muted);
+      font-size: 0.9rem;
     }
 
     .footer-inner {
       display: flex;
-
       align-items: center;
       justify-content: space-between;
-
       gap: 20px;
     }
 
-    .footer-brand {
-      font-family: "Cinzel", serif;
-
-      color: var(--text-soft);
-
-      letter-spacing: 1px;
-    }
-
-    /* =========================
-       MOBILE
-       ========================= */
-
-    @media (max-width: 900px) {
-
-      .hero-grid {
-        grid-template-columns: 1fr;
-
-        gap: 45px;
-      }
-
-      .hero {
-        min-height: auto;
-      }
-
-      .workflow-line {
-        grid-template-columns:
-          repeat(3, 1fr);
-      }
-
-      .workflow-step:first-child,
-      .workflow-step:last-child {
-        border-radius: 0;
-      }
-
-      .problem-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .principles {
-        grid-template-columns: 1fr;
-      }
-
-      .roadmap-item {
-        grid-template-columns:
-          90px 1fr;
-      }
-
-      .roadmap-status {
-        grid-column: 2;
-        width: fit-content;
-      }
-    }
-
-    @media (max-width: 700px) {
-
-      .container {
-        width: min(
-          calc(100% - 28px),
-          var(--max-width)
-        );
-      }
-
-      .nav-links {
-        display: none;
-
-        position: absolute;
-
-        top: 70px;
-        left: 0;
-        right: 0;
-
-        padding: 15px;
-
-        background: var(--bg);
-
-        border-bottom: 1px solid var(--border);
-
-        flex-direction: column;
-        align-items: stretch;
-
-        gap: 5px;
-      }
-
-      .nav-links.open {
-        display: flex;
-      }
-
-      .nav-links a {
-        padding: 12px;
-      }
-
-      .menu-button {
-        display: block;
-      }
-
-      .hero {
-        padding-top: 120px;
-      }
-
-      .hero-description {
-        font-size: 18px;
-      }
-
-      section {
-        padding: 75px 0;
-      }
-
-      .evidence-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .workflow-line {
-        grid-template-columns: 1fr;
-      }
-
-      .workflow-step {
-        min-height: auto;
-      }
-
-      .control-box {
-        padding: 28px 22px;
-      }
-
-      .roadmap-item {
-        grid-template-columns: 1fr;
-        gap: 8px;
-      }
-
-      .roadmap-status {
-        grid-column: auto;
-      }
-
-      .footer-inner {
-        flex-direction: column;
-        align-items: flex-start;
-      }
-    }
-
-    /* =========================
-       SCROLL REVEAL
-       ========================= */
+    /* Reveal animation */
 
     .reveal {
       opacity: 0;
-
-      transform: translateY(18px);
-
+      transform: translateY(16px);
       transition:
         opacity 0.65s ease,
         transform 0.65s ease;
@@ -1055,133 +548,720 @@
       transform: translateY(0);
     }
 
-    /* =========================
-       REDUCED MOTION
-       ========================= */
+    /* Tablet */
+
+    @media (max-width: 850px) {
+      .pipeline {
+        grid-template-columns: repeat(3, 1fr);
+      }
+
+      .pipeline-step:not(:last-child)::after {
+        display: none;
+      }
+
+      .grid.three {
+        grid-template-columns: 1fr;
+      }
+
+      .roadmap-row {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+
+      .status {
+        justify-self: start;
+      }
+    }
+
+    /* Mobile */
+
+    @media (max-width: 680px) {
+      body {
+        font-size: 17px;
+      }
+
+      .nav-inner {
+        min-height: 64px;
+      }
+
+      .menu-button {
+        display: block;
+      }
+
+      .nav-links {
+        display: none;
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        top: 70px;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+        padding: 8px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: #0d1017;
+        box-shadow: var(--shadow);
+      }
+
+      .nav-links.open {
+        display: flex;
+      }
+
+      .nav-links a {
+        padding: 12px;
+      }
+
+      .nav-cta {
+        text-align: center;
+      }
+
+      .hero {
+        padding: 80px 0 65px;
+      }
+
+      section {
+        padding: 65px 0;
+      }
+
+      .pipeline {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .evidence-box {
+        grid-template-columns: 1fr;
+      }
+
+      .evidence-column + .evidence-column {
+        border-left: 0;
+        border-top: 1px solid var(--border);
+      }
+
+      .footer-inner {
+        flex-direction: column;
+        text-align: center;
+      }
+    }
 
     @media (prefers-reduced-motion: reduce) {
-
       html {
         scroll-behavior: auto;
+      }
+
+      *,
+      *::before,
+      *::after {
+        transition: none !important;
+        animation: none !important;
       }
 
       .reveal {
         opacity: 1;
         transform: none;
-        transition: none;
-      }
-
-      .button,
-      .feature-card {
-        transition: none;
       }
     }
   </style>
 </head>
 
 <body>
-
-  <!-- =========================
-       NAVIGATION
-       ========================= -->
-
-  <header class="nav">
-
+    <header class="nav">
     <div class="container nav-inner">
-
-      <a
-        href="#top"
-        class="brand"
-        aria-label="ClipNexus home"
-      >
-        <div class="brand-mark">C</div>
-
-        <div class="brand-name">
-          ClipNexus
-        </div>
+      <a class="brand" href="#top" aria-label="ClipNexus home">
+        <span class="brand-mark">C</span>
+        <span>CLIPNEXUS</span>
       </a>
-
-      <nav
-        class="nav-links"
-        id="navLinks"
-        aria-label="Main navigation"
-      >
-        <a href="#workflow">Workflow</a>
-        <a href="#evidence">Architecture</a>
-        <a href="#roadmap">Roadmap</a>
-
-        <!-- Change this path when integrating with the app -->
-        <a
-          href="./index.html"
-          class="nav-cta"
-        >
-          Open App
-        </a>
-      </nav>
 
       <button
         class="menu-button"
         id="menuButton"
         type="button"
         aria-label="Open navigation"
-        aria-expanded="false"
-      >
-        ☰
+        aria-expanded="false">
+        MENU
       </button>
 
+      <nav class="nav-links" id="navLinks">
+        <a href="#workflow">Workflow</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#roadmap">Roadmap</a>
+        <a class="nav-cta" href="./index.html">Open App</a>
+      </nav>
     </div>
-
   </header>
-
 
   <main id="top">
 
-    <!-- =========================
-         HERO
-         ========================= -->
+    <!-- HERO -->
 
     <section class="hero">
+      <div class="container">
+        <div class="eyebrow">VOD Analysis Platform</div>
 
-      <div class="container hero-grid">
+        <h1>
+          From VOD to <span>Clip Intelligence.</span>
+        </h1>
 
-        <div class="reveal">
+        <p>
+          ClipNexus is a modular, provider-agnostic VOD transcript analyzer
+          built around canonical transcripts, provenance, evidence extraction,
+          and future clip-generation workflows.
+        </p>
 
-          <div class="eyebrow">
-            <span class="eyebrow-dot"></span>
-            In active development
+        <div class="hero-actions">
+          <a class="button primary" href="./index.html">
+            Open ClipNexus
+          </a>
+
+          <a class="button" href="#architecture">
+            Explore Architecture
+          </a>
+        </div>
+
+        <div
+          class="pipeline reveal"
+          aria-label="ClipNexus processing pipeline">
+
+          <div class="pipeline-step">
+            <strong>VOD</strong>
+            <small>Source</small>
           </div>
 
-          <h1>
-            From VOD<br>
-            to <span>Clip Intelligence.</span>
-          </h1>
+          <div class="pipeline-step">
+            <strong>Transcript</strong>
+            <small>Canonical data</small>
+          </div>
 
-          <p class="hero-description">
-            ClipNexus is a modular, provider-agnostic VOD
-            analysis platform designed to turn long-form
-            video into structured, evidence-backed clip
-            candidates.
+          <div class="pipeline-step">
+            <strong>Evidence</strong>
+            <small>Analysis</small>
+          </div>
+
+          <div class="pipeline-step">
+            <strong>POIs</strong>
+            <small>Moments</small>
+          </div>
+
+          <div class="pipeline-step">
+            <strong>ClipSpec</strong>
+            <small>Structure</small>
+          </div>
+
+          <div class="pipeline-step">
+            <strong>Editor</strong>
+            <small>Future</small>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ARCHITECTURE -->
+
+    <section id="architecture">
+      <div class="container">
+
+        <div class="section-heading reveal">
+          <div class="label">Why ClipNexus</div>
+
+          <h2>
+            Built for long-form VOD analysis.
+          </h2>
+
+          <p>
+            Long streams contain useful moments, but finding and structuring
+            those moments shouldn't require manually searching through hours
+            of footage.
           </p>
+        </div>
 
-          <div class="hero-actions">
 
-            <a
-              href="./index.html"
-              class="button button-primary"
-            >
-              Open ClipNexus
-            </a>
+        <div class="grid three">
 
-            <a
-              href="#workflow"
-              class="button button-secondary"
-            >
-              Explore Workflow
-            </a>
+          <article class="card reveal">
+            <div class="card-icon">01</div>
+
+            <h3>Structured Transcripts</h3>
+
+            <p>
+              Normalize transcript data into a canonical model while preserving
+              timestamps, source information, and uncertainty.
+            </p>
+          </article>
+
+
+          <article class="card reveal">
+            <div class="card-icon">02</div>
+
+            <h3>Evidence First</h3>
+
+            <p>
+              Separate what the source actually provides from information
+              derived during processing and analysis.
+            </p>
+          </article>
+
+
+          <article class="card reveal">
+            <div class="card-icon">03</div>
+
+            <h3>Provider Agnostic</h3>
+
+            <p>
+              Transcript acquisition is isolated behind provider adapters so
+              the rest of the system does not depend on one service.
+            </p>
+          </article>
+
+        </div>
+      </div>
+    </section>
+
+
+    <!-- EVIDENCE -->
+
+    <section>
+      <div class="container">
+
+        <div class="section-heading reveal">
+          <div class="label">Evidence Model</div>
+
+          <h2>
+            Source data stays separate from derived data.
+          </h2>
+
+          <p>
+            That separation is foundational to the system. It makes the
+            analysis traceable and helps preserve uncertainty instead of
+            hiding it.
+          </p>
+        </div>
+
+
+        <div class="evidence-box reveal">
+
+          <div class="evidence-column">
+
+            <h3>Source Observed</h3>
+
+            <p>
+              Information directly available from the input or provider.
+            </p>
+
+            <ul>
+              <li>Transcript text</li>
+              <li>Original timestamps</li>
+              <li>Speaker information when available</li>
+              <li>Provider and acquisition provenance</li>
+              <li>Source quality limitations</li>
+            </ul>
+
+          </div>
+
+
+          <div class="evidence-column">
+
+            <h3>Derived</h3>
+
+            <p>
+              Information calculated or interpreted by ClipNexus.
+            </p>
+
+            <ul>
+              <li>Validated transcript structure</li>
+              <li>Evidence relationships</li>
+              <li>Points of Interest</li>
+              <li>Event structures</li>
+              <li>Future ClipSpec definitions</li>
+            </ul>
 
           </div>
 
         </div>
+      </div>
+    </section>
 
 
-        <!
+    <!-- WORKFLOW -->
+
+    <section id="workflow">
+      <div class="container">
+
+        <div class="section-heading reveal">
+
+          <div class="label">Workflow</div>
+
+          <h2>
+            A pipeline instead of a pile of features.
+          </h2>
+
+          <p>
+            Each stage has a defined responsibility and feeds structured data
+            into the next stage.
+          </p>
+
+        </div>
+
+
+        <div class="workflow">
+
+          <div class="workflow-item reveal">
+            <div class="workflow-number">1</div>
+
+            <div>
+              <h3>Acquire</h3>
+
+              <p>
+                Obtain transcript data through supported providers or imported
+                transcript files.
+              </p>
+            </div>
+          </div>
+
+
+          <div class="workflow-item reveal">
+            <div class="workflow-number">2</div>
+
+            <div>
+              <h3>Normalize</h3>
+
+              <p>
+                Convert provider-specific data into the canonical
+                TranscriptDocument model.
+              </p>
+            </div>
+          </div>
+
+
+          <div class="workflow-item reveal">
+            <div class="workflow-number">3</div>
+
+            <div>
+              <h3>Validate</h3>
+
+              <p>
+                Check timestamps, ordering, structure, and source limitations
+                before analysis.
+              </p>
+            </div>
+          </div>
+
+
+          <div class="workflow-item reveal">
+            <div class="workflow-number">4</div>
+
+            <div>
+              <h3>Analyze</h3>
+
+              <p>
+                Extract transcript-supported evidence and relationships without
+                inventing missing information.
+              </p>
+            </div>
+          </div>
+
+
+          <div class="workflow-item reveal">
+            <div class="workflow-number">5</div>
+
+            <div>
+              <h3>Structure</h3>
+
+              <p>
+                Convert evidence into POIs, events, and eventually structured
+                ClipSpec instructions for a future editing system.
+              </p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+
+    <!-- HUMAN CONTROL -->
+
+    <section>
+      <div class="container">
+
+        <div class="principle reveal">
+
+          <h2>
+            AI-assisted. Human-controlled.
+          </h2>
+
+          <p>
+            ClipNexus is designed to use AI for extracting and describing
+            evidence — not for making the final publishing decision.
+            The system preserves the information needed for a human to review,
+            verify, and choose.
+          </p>
+
+        </div>
+
+      </div>
+    </section>
+
+
+    <!-- ROADMAP -->
+
+    <section id="roadmap">
+      <div class="container">
+
+        <div class="section-heading reveal">
+
+          <div class="label">Roadmap</div>
+
+          <h2>
+            Building the foundation first.
+          </h2>
+
+          <p>
+            ClipNexus is being developed incrementally so future analysis and
+            editing capabilities can be added without rebuilding the core.
+          </p>
+
+        </div>
+
+
+        <div class="roadmap">
+
+          <div class="roadmap-row reveal">
+            <div class="roadmap-stage">Stage 1</div>
+            <div class="roadmap-description">
+              Frontend shell and application foundation
+            </div>
+            <div class="status complete">Complete</div>
+          </div>
+
+
+          <div class="roadmap-row reveal">
+            <div class="roadmap-stage">Stage 1.5–1.7</div>
+            <div class="roadmap-description">
+              Canonical transcript and core architecture
+            </div>
+            <div class="status complete">Complete</div>
+          </div>
+
+
+          <div class="roadmap-row reveal">
+            <div class="roadmap-stage">Stage 2A</div>
+            <div class="roadmap-description">
+              Provider architecture and acquisition state
+            </div>
+            <div class="status complete">Complete</div>
+          </div>
+
+
+          <div class="roadmap-row reveal">
+            <div class="roadmap-stage">Stage 2B</div>
+            <div class="roadmap-description">
+              Supadata transcript provider
+            </div>
+            <div class="status complete">Complete</div>
+          </div>
+
+
+          <div class="roadmap-row reveal">
+            <div class="roadmap-stage">Stage 2C</div>
+            <div class="roadmap-description">
+              Transcript chunking and export workflow
+            </div>
+            <div class="status">Later</div>
+          </div>
+
+
+          <div class="roadmap-row reveal">
+            <div class="roadmap-stage">Stage 3</div>
+            <div class="roadmap-description">
+              Evidence analysis layer
+            </div>
+            <div class="status">Planned</div>
+          </div>
+
+
+          <div class="roadmap-row reveal">
+            <div class="roadmap-stage">Stage 4</div>
+            <div class="roadmap-description">
+              POI and event reconciliation
+            </div>
+            <div class="status">Planned</div>
+          </div>
+
+
+          <div class="roadmap-row reveal">
+            <div class="roadmap-stage">Stage 5</div>
+            <div class="roadmap-description">
+              ClipSpec generation
+            </div>
+            <div class="status">Planned</div>
+          </div>
+
+
+          <div class="roadmap-row reveal">
+            <div class="roadmap-stage">Future</div>
+            <div class="roadmap-description">
+              Independent ClipNexus editing engine
+            </div>
+            <div class="status">Future</div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+
+    <!-- FINAL CTA -->
+
+    <section class="final-cta">
+
+      <div class="container">
+
+        <h2>
+          Start with the source.
+        </h2>
+
+        <p>
+          ClipNexus begins with reliable transcript data and builds upward
+          toward structured clip intelligence.
+        </p>
+
+        <div class="hero-actions">
+
+          <a class="button primary" href="./index.html">
+            Open the App
+          </a>
+
+          <a class="button" href="#top">
+            Back to Top
+          </a>
+
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+
+  <!-- FOOTER -->
+
+  <footer>
+
+    <div class="container footer-inner">
+
+      <div>
+        © 2026 ClipNexus
+      </div>
+
+      <div>
+        Modular · Provider-Agnostic · Evidence-First
+      </div>
+
+    </div>
+
+  </footer>
+
+
+  <!-- JAVASCRIPT -->
+
+  <script>
+    (() => {
+
+      const menuButton =
+        document.getElementById("menuButton");
+
+      const navLinks =
+        document.getElementById("navLinks");
+
+
+      /* Mobile navigation */
+
+      if (menuButton && navLinks) {
+
+        menuButton.addEventListener("click", () => {
+
+          const isOpen =
+            navLinks.classList.toggle("open");
+
+          menuButton.setAttribute(
+            "aria-expanded",
+            String(isOpen)
+          );
+
+        });
+
+
+        navLinks.addEventListener("click", (event) => {
+
+          if (event.target.closest("a")) {
+
+            navLinks.classList.remove("open");
+
+            menuButton.setAttribute(
+              "aria-expanded",
+              "false"
+            );
+
+          }
+
+        });
+
+      }
+
+
+      /* Scroll reveal */
+
+      const revealElements =
+        document.querySelectorAll(".reveal");
+
+
+      if ("IntersectionObserver" in window) {
+
+        const observer =
+          new IntersectionObserver(
+            (entries, observerInstance) => {
+
+              entries.forEach((entry) => {
+
+                if (entry.isIntersecting) {
+
+                  entry.target.classList.add("visible");
+
+                  observerInstance.unobserve(
+                    entry.target
+                  );
+
+                }
+
+              });
+
+            },
+            {
+              threshold: 0.12
+            }
+          );
+
+
+        revealElements.forEach((element) => {
+
+          observer.observe(element);
+
+        });
+
+      } else {
+
+        revealElements.forEach((element) => {
+
+          element.classList.add("visible");
+
+        });
+
+      }
+
+    })();
+  </script>
+
+</body>
+</html>
