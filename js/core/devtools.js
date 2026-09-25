@@ -28,6 +28,7 @@ import { addProjectTests, addStage17Tests } from "./devtools-project-tests.js";
 import { addProviderTests } from "./devtools-provider-tests.js";
 import { addSupadataTests } from "./devtools-supadata-tests.js";
 import { addAnalysisTests } from "./devtools-analysis-tests.js";
+import { addChunkingTests } from "./devtools-chunking-tests.js";
 import { createMockProvider } from "../transcript/providers/adapters/mock.js";
 
 function getStoredTranscript(appState) {
@@ -117,7 +118,7 @@ function buildTests(appState) {
 
     add("derived layer creates a new document", () => {
         const doc = parseSample("txt");
-        const next = withDerivedLayer(doc, { chunks: chunkTranscript(doc.segments) });
+        const next = withDerivedLayer(doc, { chunks: chunkTranscript(doc) });
         return next !== doc && next.rawText === doc.rawText && doc.processing.chunked === false;
     });
 
@@ -164,6 +165,9 @@ function buildTests(appState) {
 
     // Stage 3: analysis contracts (interface only — no AI integration).
     addAnalysisTests(add);
+
+    // Stage 2C: deterministic chunking + export.
+    addChunkingTests(add);
 
     return tests;
 }
