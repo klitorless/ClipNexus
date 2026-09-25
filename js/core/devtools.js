@@ -27,6 +27,7 @@ import { resolveVideoUrl } from "../video/video-resolver.js";
 import { addProjectTests, addStage17Tests } from "./devtools-project-tests.js";
 import { addProviderTests } from "./devtools-provider-tests.js";
 import { addSupadataTests } from "./devtools-supadata-tests.js";
+import { addAnalysisTests } from "./devtools-analysis-tests.js";
 import { createMockProvider } from "../transcript/providers/adapters/mock.js";
 
 function getStoredTranscript(appState) {
@@ -160,6 +161,9 @@ function buildTests(appState) {
 
     // Stage 2B: the first real provider (fake fetch — no network) + JSON parser.
     addSupadataTests(add);
+
+    // Stage 3: analysis contracts (interface only — no AI integration).
+    addAnalysisTests(add);
 
     return tests;
 }
