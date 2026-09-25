@@ -1,0 +1,162 @@
+/* ==========================================================
+   components.css
+   Reusable UI pieces: buttons, nav items, cards, stats.
+   ========================================================== */
+
+/* ---------- Buttons ---------- */
+
+.button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--touch-target);
+    padding: 0 var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--panel-2);
+    font-weight: 600;
+    font-size: var(--text-sm);
+    white-space: nowrap;
+    transition: background var(--transition), border-color var(--transition);
+}
+
+.button:hover {
+    border-color: var(--muted);
+}
+
+.button-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-contrast);
+}
+
+.button-primary:hover {
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
+}
+
+/* ---------- Navigation ---------- */
+
+.nav-list {
+    display: flex;
+    gap: var(--space-1);
+    list-style: none;
+    margin: 0;
+    padding: var(--space-2);
+}
+
+.nav-link {
+    display: flex;
+    align-items: center;
+    min-height: var(--touch-target);
+    padding: 0 var(--space-3);
+    border-radius: var(--radius-sm);
+    color: var(--muted);
+    text-decoration: none;
+    font-size: var(--text-sm);
+    font-weight: 500;
+    white-space: nowrap;
+    border-left: 3px solid transparent;
+    transition: background var(--transition), color var(--transition);
+}
+
+.nav-link:hover {
+    background: var(--panel-2);
+    color: var(--text);
+}
+
+.nav-link.is-active {
+    background: var(--panel-2);
+    color: var(--text);
+    border-left-color: var(--accent);
+}
+
+@media (min-width: 768px) {
+    .nav-list {
+        flex-direction: column;
+        padding: var(--space-3);
+    }
+}
+
+/* ---------- Cards ---------- */
+
+.card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--space-4);
+    min-width: 0;
+}
+
+.card-title {
+    font-size: var(--text-base);
+    font-weight: 600;
+    margin-bottom: var(--space-2);
+}
+
+.card-body {
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+.card-body + .card-body {
+    margin-top: var(--space-2);
+}
+
+/* ---------- Stats ---------- */
+
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: var(--space-4);
+}
+
+.stat-label {
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+.stat-value {
+    font-family: var(--font-mono);
+    font-size: var(--text-stat);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+    margin-top: var(--space-1);
+}
+
+/* ---------- Key/value details ---------- */
+
+.detail-list {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--space-2) var(--space-4);
+    margin: 0;
+    font-size: var(--text-sm);
+}
+
+.detail-list dt {
+    color: var(--muted);
+}
+
+.detail-list dd {
+    margin: 0;
+    font-family: var(--font-mono);
+    overflow-wrap: anywhere;
+}
+
+/* ---------- Status tag ---------- */
+
+.tag {
+    display: inline-block;
+    padding: 2px var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 0.75rem;
+    color: var(--accent);
+    margin-bottom: var(--space-2);
+}
+
+.tag-danger {
+    color: var(--danger);
+}

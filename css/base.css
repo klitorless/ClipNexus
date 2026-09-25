@@ -1,0 +1,107 @@
+/* ==========================================================
+   base.css
+   Design tokens (CSS variables), reset, and base typography.
+   Change colors/spacing here — other stylesheets only
+   reference these variables.
+   ========================================================== */
+
+:root {
+    /* Surfaces */
+    --bg: #0f1115;
+    --panel: #161a20;
+    --panel-2: #1d222a;
+    --border: #2a303a;
+
+    /* Text */
+    --text: #e3e6eb;
+    --muted: #8b93a1;
+
+    /* Signals */
+    --accent: #4fb3a9;
+    --accent-strong: #6cc9bf;
+    --accent-contrast: #0b1413;
+    --danger: #e0665c;
+
+    /* Shape & spacing */
+    --radius: 8px;
+    --radius-sm: 6px;
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+
+    /* Type */
+    --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Roboto Mono", monospace;
+    --text-sm: 0.8125rem;
+    --text-base: 0.9375rem;
+    --text-lg: 1.125rem;
+    --text-xl: 1.5rem;
+    --text-stat: 2rem;
+
+    /* Controls */
+    --touch-target: 44px;
+    --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+    --transition: 150ms ease;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html {
+    -webkit-text-size-adjust: 100%;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: 1.5;
+    overflow-x: hidden;
+}
+
+h1, h2, h3, p {
+    margin: 0;
+}
+
+button,
+input {
+    font: inherit;
+    color: inherit;
+}
+
+button {
+    cursor: pointer;
+}
+
+:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+}
+
+code,
+.mono {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+}
+
+/* Hide visually but keep available to scripts */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}

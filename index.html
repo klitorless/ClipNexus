@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>VOD Analyzer</title>
+
+    <!-- Styles: base tokens, page layout, reusable components -->
+    <link rel="stylesheet" href="./css/base.css">
+    <link rel="stylesheet" href="./css/layout.css">
+    <link rel="stylesheet" href="./css/components.css">
+</head>
+<body>
+    <div class="app-shell">
+
+        <!-- Top bar: brand + upload control -->
+        <header class="app-header">
+            <div class="brand">
+                <svg class="brand-mark" viewBox="0 0 24 24" width="24" height="24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                     stroke-linejoin="round" aria-label="VOD Analyzer logo" role="img">
+                    <rect x="2.5" y="4.5" width="19" height="15" rx="2"></rect>
+                    <path d="M6 15l3-4 3 2.5 3-5 3 6.5"></path>
+                </svg>
+                <span class="brand-name">VOD ANALYZER</span>
+            </div>
+
+            <button id="upload-button" class="button button-primary" type="button">
+                Upload Transcript
+            </button>
+
+            <!-- Hidden file input, opened by the Upload button (see js/app.js) -->
+            <input id="transcript-file-input" class="visually-hidden" type="file"
+                   accept=".txt,.srt,.vtt,.json" tabindex="-1" aria-hidden="true">
+        </header>
+
+        <!-- Sidebar navigation mount point (rendered by js/ui/sidebar.js) -->
+        <nav id="sidebar-mount" class="app-sidebar" aria-label="Sections"></nav>
+
+        <!-- Main content area -->
+        <main class="app-main">
+            <h1 id="page-title" class="page-title">Dashboard</h1>
+            <section id="content-mount" class="content" aria-live="polite"></section>
+        </main>
+
+    </div>
+
+    <script type="module" src="./js/app.js"></script>
+</body>
+</html>
