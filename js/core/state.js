@@ -4,20 +4,15 @@
 // subscribers when it changes. No framework, no DOM access.
 //
 // Store whole objects with set(); do not mutate values in place.
-// The transcript is a frozen TranscriptDocument (see
-// js/transcript/model.js); new derived layers produce a new
-// document object that replaces the old one via set().
+// The project is a frozen Project (see js/core/project.js). It
+// owns the video, the frozen TranscriptDocument, and the reserved
+// analysis/POI/event/clip containers. Changes produce a NEW
+// project object that replaces the old one via set("project").
 // ==========================================================
 
 const initialState = {
     route: "dashboard",
-
-    project: {},        // Reserved: project metadata (later stage)
-    transcript: null,   // Canonical TranscriptDocument or null
-    analysis: {},       // Reserved: AI evidence analysis (later stage)
-    pois: [],           // Reserved: POIs (later stage)
-    events: [],         // Reserved: event arcs (later stage)
-    clips: [],          // Reserved: clip candidates for human review (later stage)
+    project: null,      // Project or null (no project yet)
     ui: {}              // Reserved: view preferences
 };
 

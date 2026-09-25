@@ -5,7 +5,9 @@
 // No test framework, no network, no effect on app state.
 //
 // Usage in the browser console:
+//   vodAnalyzer.inspectProject()      // frozen Project (or null)
 //   vodAnalyzer.inspectTranscript()   // frozen TranscriptDocument
+//   vodAnalyzer.resolveVideoUrl(url)  // try the resolver (pure)
 //   vodAnalyzer.getState("route")
 //   vodAnalyzer.runSelfTests()        // prints a pass/fail table
 //
@@ -18,6 +20,13 @@ import { parseTranscript } from "../transcript/parser.js";
 import { validateTranscript, createValidationIssue, ISSUE_TYPES } from "../transcript/validator.js";
 import { chunkTranscript } from "../transcript/chunker.js";
 import { createSegment, createTimestamp, withDerivedLayer } from "../transcript/model.js";
+import { resolveVideoUrl } from "../video/video-resolver.js";
+import { addProjectTests } from "./devtools-project-tests.js";
+
+function getStoredTranscript(appState) {
+    const project = appState.get("project");
+    return project ? project.transcript : null;
+}
 
 // Samples include CRLF, Unicode, and HTML-like text to prove the raw
 // source survives byte-for-byte and is never treated as markup.
@@ -114,13 +123,16 @@ function buildTests(appState) {
     });
 
     add("stored transcript cannot be corrupted via inspection", () => {
-        const stored = appState.get("transcript");
+        const stored = getStoredTranscript(appState);
         if (!stored) return true; // Nothing loaded; nothing to corrupt.
         const before = JSON.stringify(stored);
         throwsTypeError(() => { stored.rawText = ""; });
         throwsTypeError(() => { stored.segments.push({}); });
-        return JSON.stringify(appState.get("transcript")) === before;
+        return JSON.stringify(getStoredTranscript(appState)) === before;
     });
+
+    // Stage 1.6: project + video foundation.
+    addProjectTests(add);
 
     return tests;
 }
@@ -139,7 +151,9 @@ function runSelfTests(appState) {
 export function installDevtools(appState) {
     window.vodAnalyzer = Object.freeze({
         getState: (key) => appState.get(key),
-        inspectTranscript: () => appState.get("transcript"),
+        inspectProject: () => appState.get("project"),
+        inspectTranscript: () => getStoredTranscript(appState),
+        resolveVideoUrl,
         formats: TRANSCRIPT_FORMATS,
         runSelfTests: () => runSelfTests(appState)
     });

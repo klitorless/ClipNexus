@@ -1,11 +1,13 @@
 // ==========================================================
 // dashboard.js
-// Responsibility: build the Dashboard view (stats, project
-// status, loaded transcript summary). Pure DOM building —
-// receives data, returns elements.
+// Responsibility: build the Dashboard view (video URL form,
+// project card, stats, stage status, loaded transcript
+// summary). Pure DOM building — receives data + callbacks,
+// returns elements.
 // ==========================================================
 
 import { createElement, createDetailList } from "./dom.js";
+import { createVideoUrlForm, createProjectCard } from "./project-panel.js";
 
 export function formatFileSize(bytes) {
     if (bytes < 1024) return `${bytes} B`;
@@ -53,18 +55,28 @@ export function createTranscriptSummaryCard(transcript, extraRows = []) {
     return card;
 }
 
-export function renderDashboard(mountElement, appState) {
-    const transcript = appState.get("transcript");
-    const transcriptCount = transcript ? 1 : 0;
+/**
+ * @param {HTMLElement} mountElement
+ * @param {object} appState
+ * @param {{onVideoUrlSubmit: (url:string) => {ok:boolean, message:string}}} handlers
+ */
+export function renderDashboard(mountElement, appState, handlers) {
+    const project = appState.get("project");
+    const transcript = project ? project.transcript : null;
 
     const stats = createElement("div", "stat-grid");
     stats.append(
-        createStatCard("Transcripts", transcriptCount),
-        createStatCard("POIs discovered", appState.get("pois").length),
-        createStatCard("Clip candidates", appState.get("clips").length)
+        createStatCard("Transcripts", transcript ? 1 : 0),
+        createStatCard("POIs discovered", project ? project.pois.length : 0),
+        createStatCard("Clip candidates", project ? project.clips.length : 0)
     );
 
-    mountElement.replaceChildren(stats, createStatusCard());
+    mountElement.replaceChildren(
+        createVideoUrlForm({ onSubmit: handlers.onVideoUrlSubmit, notice: appState.get("ui").videoUrlNotice || null }),
+        createProjectCard(project),
+        stats,
+        createStatusCard()
+    );
 
     if (transcript) {
         mountElement.append(createTranscriptSummaryCard(transcript));

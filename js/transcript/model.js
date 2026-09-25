@@ -23,17 +23,14 @@
 // copied, so shallow copies are cheap.
 // ==========================================================
 
+import { createRandomId } from "../core/ids.js";
+
 export const TRANSCRIPT_SCHEMA_VERSION = 1;
 
 // ---------- Small utilities ----------
 
 function createDocumentId() {
-    if (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
-        return `tx-${globalThis.crypto.randomUUID()}`;
-    }
-    // Fallback for non-secure contexts (e.g. some file:// setups).
-    const random = Math.random().toString(36).slice(2, 10);
-    return `tx-${Date.now().toString(36)}-${random}`;
+    return createRandomId("tx");
 }
 
 // Deterministic segment IDs: the same file parsed twice yields the

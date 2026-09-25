@@ -104,6 +104,59 @@
     margin-top: var(--space-2);
 }
 
+/* ---------- Form fields (video URL) ---------- */
+
+.field-label {
+    display: block;
+    font-weight: 600;
+    font-size: var(--text-sm);
+    margin-bottom: var(--space-2);
+}
+
+.field-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.text-input {
+    flex: 1 1 220px;
+    min-width: 0;
+    min-height: var(--touch-target);
+    padding: 0 var(--space-3);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 1rem; /* 16px+ prevents mobile zoom-on-focus */
+}
+
+.text-input::placeholder {
+    color: var(--muted);
+}
+
+.text-input:focus-visible {
+    border-color: var(--accent);
+}
+
+.field-row .button {
+    flex: 0 0 auto;
+}
+
+.field-message {
+    margin-top: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--muted);
+}
+
+.field-message:empty {
+    display: none;
+}
+
+.field-message.is-error {
+    color: var(--danger);
+}
+
 /* ---------- Stats ---------- */
 
 .stat-grid {
