@@ -1,0 +1,1187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <meta
+    name="description"
+    content="ClipNexus — modular, provider-agnostic VOD transcript analysis and clip intelligence."
+  >
+
+  <title>ClipNexus — VOD Intelligence</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Rajdhani:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  >
+
+  <style>
+    :root {
+      --bg: #08090d;
+      --bg-soft: #0d0f15;
+      --panel: #11141c;
+      --panel-hover: #151925;
+
+      --border: #252b38;
+      --border-bright: #394152;
+
+      --text: #e8eaf0;
+      --text-soft: #a5aab7;
+      --text-muted: #6e7482;
+
+      --accent: #d8b46a;
+      --accent-soft: rgba(216, 180, 106, 0.12);
+      --accent-border: rgba(216, 180, 106, 0.35);
+
+      --success: #73c991;
+      --danger: #d97979;
+
+      --max-width: 1180px;
+
+      --radius: 10px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(
+          circle at 50% -10%,
+          rgba(216, 180, 106, 0.09),
+          transparent 35%
+        ),
+        var(--bg);
+
+      color: var(--text);
+
+      font-family: "Rajdhani", sans-serif;
+      font-size: 17px;
+      line-height: 1.55;
+
+      overflow-x: hidden;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .container {
+      width: min(
+        calc(100% - 40px),
+        var(--max-width)
+      );
+
+      margin: 0 auto;
+    }
+
+    /* =========================
+       NAVIGATION
+       ========================= */
+
+    .nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+
+      z-index: 1000;
+
+      background: rgba(8, 9, 13, 0.88);
+      backdrop-filter: blur(12px);
+
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+
+    .nav-inner {
+      min-height: 70px;
+
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-mark {
+      width: 32px;
+      height: 32px;
+
+      display: grid;
+      place-items: center;
+
+      border: 1px solid var(--accent-border);
+      background: var(--accent-soft);
+
+      color: var(--accent);
+
+      font-family: "Cinzel", serif;
+      font-weight: 800;
+
+      border-radius: 6px;
+    }
+
+    .brand-name {
+      font-family: "Cinzel", serif;
+      font-size: 19px;
+      font-weight: 800;
+      letter-spacing: 1px;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .nav-links a {
+      color: var(--text-soft);
+      font-size: 15px;
+      font-weight: 600;
+      transition: color 0.2s ease;
+    }
+
+    .nav-links a:hover {
+      color: var(--accent);
+    }
+
+    .nav-cta {
+      padding: 8px 15px;
+
+      border: 1px solid var(--accent-border);
+      border-radius: 6px;
+
+      color: var(--accent) !important;
+
+      background: var(--accent-soft);
+    }
+
+    .menu-button {
+      display: none;
+
+      background: transparent;
+      border: 1px solid var(--border);
+
+      color: var(--text);
+
+      padding: 7px 10px;
+      border-radius: 6px;
+
+      cursor: pointer;
+    }
+
+    /* =========================
+       HERO
+       ========================= */
+
+    .hero {
+      min-height: 760px;
+
+      display: flex;
+      align-items: center;
+
+      padding: 140px 0 90px;
+
+      position: relative;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+
+      gap: 70px;
+
+      align-items: center;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+
+      padding: 6px 11px;
+
+      border: 1px solid var(--accent-border);
+      border-radius: 999px;
+
+      background: var(--accent-soft);
+
+      color: var(--accent);
+
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .eyebrow-dot {
+      width: 7px;
+      height: 7px;
+
+      border-radius: 50%;
+      background: var(--success);
+
+      box-shadow: 0 0 10px rgba(115, 201, 145, 0.6);
+    }
+
+    h1 {
+      margin: 22px 0 20px;
+
+      font-family: "Cinzel", serif;
+      font-size: clamp(42px, 6vw, 76px);
+
+      line-height: 1.03;
+
+      letter-spacing: -1px;
+    }
+
+    .hero h1 span {
+      color: var(--accent);
+    }
+
+    .hero-description {
+      max-width: 650px;
+
+      color: var(--text-soft);
+
+      font-size: 20px;
+      line-height: 1.6;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+
+      margin-top: 32px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+
+      min-height: 46px;
+
+      padding: 10px 19px;
+
+      border-radius: 6px;
+
+      border: 1px solid var(--border-bright);
+
+      font-weight: 700;
+
+      cursor: pointer;
+
+      transition:
+        transform 0.2s ease,
+        border-color 0.2s ease,
+        background 0.2s ease;
+    }
+
+    .button:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent-border);
+    }
+
+    .button-primary {
+      background: var(--accent);
+      color: #111;
+
+      border-color: var(--accent);
+    }
+
+    .button-secondary {
+      background: var(--panel);
+      color: var(--text);
+    }
+
+    /* =========================
+       HERO PIPELINE CARD
+       ========================= */
+
+    .pipeline-card {
+      position: relative;
+
+      padding: 24px;
+
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+
+      background:
+        linear-gradient(
+          145deg,
+          rgba(255,255,255,0.025),
+          rgba(255,255,255,0)
+        ),
+        var(--panel);
+
+      box-shadow:
+        0 25px 70px rgba(0,0,0,0.35);
+    }
+
+    .pipeline-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+
+      padding-bottom: 15px;
+
+      margin-bottom: 18px;
+
+      border-bottom: 1px solid var(--border);
+    }
+
+    .pipeline-title {
+      font-family: "Cinzel", serif;
+      font-size: 14px;
+      letter-spacing: 1px;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+
+      color: var(--success);
+
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+
+      background: var(--success);
+      border-radius: 50%;
+    }
+
+    .pipeline {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .pipeline-node {
+      display: grid;
+      grid-template-columns: 40px 1fr;
+
+      min-height: 70px;
+
+      position: relative;
+    }
+
+    .pipeline-node:not(:last-child)::after {
+      content: "";
+
+      position: absolute;
+
+      left: 19px;
+      top: 39px;
+      bottom: -1px;
+
+      width: 1px;
+
+      background: var(--border-bright);
+    }
+
+    .node-icon {
+      width: 38px;
+      height: 38px;
+
+      display: grid;
+      place-items: center;
+
+      border: 1px solid var(--border-bright);
+      border-radius: 7px;
+
+      background: var(--bg-soft);
+
+      color: var(--accent);
+
+      font-weight: 700;
+
+      position: relative;
+      z-index: 2;
+    }
+
+    .node-content {
+      padding: 2px 0 20px 14px;
+    }
+
+    .node-title {
+      font-size: 17px;
+      font-weight: 700;
+    }
+
+    .node-description {
+      color: var(--text-muted);
+
+      font-size: 13px;
+    }
+
+    /* =========================
+       SECTION BASICS
+       ========================= */
+
+    section {
+      padding: 100px 0;
+    }
+
+    .section-heading {
+      max-width: 720px;
+
+      margin-bottom: 48px;
+    }
+
+    .section-label {
+      color: var(--accent);
+
+      font-size: 13px;
+      font-weight: 700;
+
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    h2 {
+      margin: 9px 0 15px;
+
+      font-family: "Cinzel", serif;
+
+      font-size: clamp(30px, 4vw, 48px);
+      line-height: 1.15;
+    }
+
+    .section-description {
+      color: var(--text-soft);
+
+      font-size: 18px;
+    }
+
+    /* =========================
+       PROBLEM SECTION
+       ========================= */
+
+    .problem {
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+
+      background: var(--bg-soft);
+    }
+
+    .problem-grid {
+      display: grid;
+
+      grid-template-columns:
+        repeat(3, 1fr);
+
+      gap: 16px;
+    }
+
+    .feature-card {
+      padding: 26px;
+
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+
+      background: var(--panel);
+
+      transition:
+        transform 0.2s ease,
+        border-color 0.2s ease;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-4px);
+      border-color: var(--accent-border);
+    }
+
+    .feature-number {
+      color: var(--accent);
+
+      font-family: "Cinzel", serif;
+      font-size: 13px;
+    }
+
+    .feature-card h3 {
+      margin: 12px 0 8px;
+
+      font-size: 21px;
+    }
+
+    .feature-card p {
+      margin: 0;
+
+      color: var(--text-muted);
+      font-size: 15px;
+    }
+
+    /* =========================
+       EVIDENCE
+       ========================= */
+
+    .evidence-grid {
+      display: grid;
+
+      grid-template-columns:
+        1fr 1fr;
+
+      gap: 20px;
+    }
+
+    .evidence-panel {
+      padding: 28px;
+
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+
+      background: var(--panel);
+    }
+
+    .evidence-panel.source {
+      border-top: 2px solid var(--success);
+    }
+
+    .evidence-panel.derived {
+      border-top: 2px solid var(--accent);
+    }
+
+    .panel-label {
+      margin-bottom: 20px;
+
+      font-size: 13px;
+      font-weight: 700;
+
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+
+    .source .panel-label {
+      color: var(--success);
+    }
+
+    .derived .panel-label {
+      color: var(--accent);
+    }
+
+    .data-list {
+      display: grid;
+
+      gap: 10px;
+
+      margin: 0;
+      padding: 0;
+
+      list-style: none;
+    }
+
+    .data-list li {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+
+      color: var(--text-soft);
+
+      padding-bottom: 10px;
+
+      border-bottom: 1px solid var(--border);
+    }
+
+    .data-list li:last-child {
+      padding-bottom: 0;
+      border-bottom: 0;
+    }
+
+    .data-list li::before {
+      content: "›";
+
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    /* =========================
+       WORKFLOW
+       ========================= */
+
+    .workflow {
+      background: var(--bg-soft);
+
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .workflow-line {
+      display: grid;
+
+      grid-template-columns:
+        repeat(6, 1fr);
+
+      gap: 8px;
+    }
+
+    .workflow-step {
+      position: relative;
+
+      padding: 22px 16px;
+
+      border: 1px solid var(--border);
+      background: var(--panel);
+
+      min-height: 150px;
+    }
+
+    .workflow-step:first-child {
+      border-radius: 8px 0 0 8px;
+    }
+
+    .workflow-step:last-child {
+      border-radius: 0 8px 8px 0;
+    }
+
+    .workflow-step-number {
+      color: var(--accent);
+
+      font-family: "Cinzel", serif;
+
+      font-size: 12px;
+    }
+
+    .workflow-step h3 {
+      margin: 10px 0 5px;
+
+      font-size: 18px;
+    }
+
+    .workflow-step p {
+      margin: 0;
+
+      color: var(--text-muted);
+
+      font-size: 13px;
+    }
+
+    /* =========================
+       HUMAN CONTROL
+       ========================= */
+
+    .control-box {
+      padding: 45px;
+
+      border: 1px solid var(--accent-border);
+      border-radius: var(--radius);
+
+      background:
+        linear-gradient(
+          135deg,
+          var(--accent-soft),
+          transparent 60%
+        );
+    }
+
+    .control-box h2 {
+      max-width: 700px;
+    }
+
+    .control-box p {
+      max-width: 760px;
+
+      color: var(--text-soft);
+
+      font-size: 18px;
+    }
+
+    .principles {
+      display: grid;
+
+      grid-template-columns:
+        repeat(3, 1fr);
+
+      gap: 14px;
+
+      margin-top: 30px;
+    }
+
+    .principle {
+      padding: 18px;
+
+      border: 1px solid var(--border);
+
+      background: rgba(0,0,0,0.15);
+    }
+
+    .principle strong {
+      display: block;
+
+      margin-bottom: 4px;
+
+      color: var(--text);
+    }
+
+    .principle span {
+      color: var(--text-muted);
+
+      font-size: 14px;
+    }
+
+    /* =========================
+       ROADMAP
+       ========================= */
+
+    .roadmap {
+      display: grid;
+
+      gap: 12px;
+    }
+
+    .roadmap-item {
+      display: grid;
+
+      grid-template-columns:
+        120px 1fr auto;
+
+      gap: 20px;
+
+      align-items: center;
+
+      padding: 20px;
+
+      border: 1px solid var(--border);
+      background: var(--panel);
+    }
+
+    .roadmap-stage {
+      color: var(--accent);
+
+      font-family: "Cinzel", serif;
+
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .roadmap-content strong {
+      display: block;
+
+      font-size: 18px;
+    }
+
+    .roadmap-content span {
+      color: var(--text-muted);
+
+      font-size: 14px;
+    }
+
+    .roadmap-status {
+      padding: 4px 9px;
+
+      border: 1px solid var(--border);
+
+      border-radius: 999px;
+
+      color: var(--text-muted);
+
+      font-size: 11px;
+      font-weight: 700;
+
+      text-transform: uppercase;
+    }
+
+    .roadmap-item.complete .roadmap-status {
+      color: var(--success);
+      border-color: rgba(115,201,145,0.25);
+    }
+
+    .roadmap-item.current {
+      border-color: var(--accent-border);
+    }
+
+    .roadmap-item.current .roadmap-status {
+      color: var(--accent);
+      border-color: var(--accent-border);
+      background: var(--accent-soft);
+    }
+
+    /* =========================
+       CTA
+       ========================= */
+
+    .final-cta {
+      text-align: center;
+
+      padding: 110px 0 130px;
+
+      border-top: 1px solid var(--border);
+
+      background:
+        radial-gradient(
+          circle at 50% 100%,
+          rgba(216,180,106,0.08),
+          transparent 45%
+        );
+    }
+
+    .final-cta h2 {
+      max-width: 800px;
+
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .final-cta p {
+      max-width: 650px;
+
+      margin: 0 auto;
+
+      color: var(--text-soft);
+
+      font-size: 18px;
+    }
+
+    .final-actions {
+      display: flex;
+
+      justify-content: center;
+
+      gap: 12px;
+
+      margin-top: 30px;
+
+      flex-wrap: wrap;
+    }
+
+    /* =========================
+       FOOTER
+       ========================= */
+
+    footer {
+      border-top: 1px solid var(--border);
+
+      padding: 28px 0;
+
+      color: var(--text-muted);
+
+      font-size: 13px;
+    }
+
+    .footer-inner {
+      display: flex;
+
+      align-items: center;
+      justify-content: space-between;
+
+      gap: 20px;
+    }
+
+    .footer-brand {
+      font-family: "Cinzel", serif;
+
+      color: var(--text-soft);
+
+      letter-spacing: 1px;
+    }
+
+    /* =========================
+       MOBILE
+       ========================= */
+
+    @media (max-width: 900px) {
+
+      .hero-grid {
+        grid-template-columns: 1fr;
+
+        gap: 45px;
+      }
+
+      .hero {
+        min-height: auto;
+      }
+
+      .workflow-line {
+        grid-template-columns:
+          repeat(3, 1fr);
+      }
+
+      .workflow-step:first-child,
+      .workflow-step:last-child {
+        border-radius: 0;
+      }
+
+      .problem-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .principles {
+        grid-template-columns: 1fr;
+      }
+
+      .roadmap-item {
+        grid-template-columns:
+          90px 1fr;
+      }
+
+      .roadmap-status {
+        grid-column: 2;
+        width: fit-content;
+      }
+    }
+
+    @media (max-width: 700px) {
+
+      .container {
+        width: min(
+          calc(100% - 28px),
+          var(--max-width)
+        );
+      }
+
+      .nav-links {
+        display: none;
+
+        position: absolute;
+
+        top: 70px;
+        left: 0;
+        right: 0;
+
+        padding: 15px;
+
+        background: var(--bg);
+
+        border-bottom: 1px solid var(--border);
+
+        flex-direction: column;
+        align-items: stretch;
+
+        gap: 5px;
+      }
+
+      .nav-links.open {
+        display: flex;
+      }
+
+      .nav-links a {
+        padding: 12px;
+      }
+
+      .menu-button {
+        display: block;
+      }
+
+      .hero {
+        padding-top: 120px;
+      }
+
+      .hero-description {
+        font-size: 18px;
+      }
+
+      section {
+        padding: 75px 0;
+      }
+
+      .evidence-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .workflow-line {
+        grid-template-columns: 1fr;
+      }
+
+      .workflow-step {
+        min-height: auto;
+      }
+
+      .control-box {
+        padding: 28px 22px;
+      }
+
+      .roadmap-item {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+
+      .roadmap-status {
+        grid-column: auto;
+      }
+
+      .footer-inner {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+
+    /* =========================
+       SCROLL REVEAL
+       ========================= */
+
+    .reveal {
+      opacity: 0;
+
+      transform: translateY(18px);
+
+      transition:
+        opacity 0.65s ease,
+        transform 0.65s ease;
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* =========================
+       REDUCED MOTION
+       ========================= */
+
+    @media (prefers-reduced-motion: reduce) {
+
+      html {
+        scroll-behavior: auto;
+      }
+
+      .reveal {
+        opacity: 1;
+        transform: none;
+        transition: none;
+      }
+
+      .button,
+      .feature-card {
+        transition: none;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- =========================
+       NAVIGATION
+       ========================= -->
+
+  <header class="nav">
+
+    <div class="container nav-inner">
+
+      <a
+        href="#top"
+        class="brand"
+        aria-label="ClipNexus home"
+      >
+        <div class="brand-mark">C</div>
+
+        <div class="brand-name">
+          ClipNexus
+        </div>
+      </a>
+
+      <nav
+        class="nav-links"
+        id="navLinks"
+        aria-label="Main navigation"
+      >
+        <a href="#workflow">Workflow</a>
+        <a href="#evidence">Architecture</a>
+        <a href="#roadmap">Roadmap</a>
+
+        <!-- Change this path when integrating with the app -->
+        <a
+          href="./index.html"
+          class="nav-cta"
+        >
+          Open App
+        </a>
+      </nav>
+
+      <button
+        class="menu-button"
+        id="menuButton"
+        type="button"
+        aria-label="Open navigation"
+        aria-expanded="false"
+      >
+        ☰
+      </button>
+
+    </div>
+
+  </header>
+
+
+  <main id="top">
+
+    <!-- =========================
+         HERO
+         ========================= -->
+
+    <section class="hero">
+
+      <div class="container hero-grid">
+
+        <div class="reveal">
+
+          <div class="eyebrow">
+            <span class="eyebrow-dot"></span>
+            In active development
+          </div>
+
+          <h1>
+            From VOD<br>
+            to <span>Clip Intelligence.</span>
+          </h1>
+
+          <p class="hero-description">
+            ClipNexus is a modular, provider-agnostic VOD
+            analysis platform designed to turn long-form
+            video into structured, evidence-backed clip
+            candidates.
+          </p>
+
+          <div class="hero-actions">
+
+            <a
+              href="./index.html"
+              class="button button-primary"
+            >
+              Open ClipNexus
+            </a>
+
+            <a
+              href="#workflow"
+              class="button button-secondary"
+            >
+              Explore Workflow
+            </a>
+
+          </div>
+
+        </div>
+
+
+        <!
