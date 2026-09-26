@@ -385,7 +385,10 @@ export function addProviderTests(add) {
         const doc = buildAcquiredTranscript(await acquire(registry, "provider-b", project));
         return doc.rawText === rawText && doc.source.filename === null && doc.source.format === "vtt" &&
             doc.source.size === new TextEncoder().encode(rawText).length &&
-            JSON.stringify(doc).split("héllo").length === 2 && // raw text not duplicated
+            // Stage 5: parsed segments carry their own cue text, so the
+            // raw evidence itself must appear exactly once in the
+            // serialized document (stored once, canonically).
+            JSON.stringify(doc).split(JSON.stringify(rawText)).length === 2 &&
             Object.isFrozen(doc) && Object.isFrozen(doc.acquisition) && doc.schemaVersion === 2;
     });
 

@@ -31,6 +31,7 @@ import { addAnalysisTests } from "./devtools-analysis-tests.js";
 import { addChunkingTests } from "./devtools-chunking-tests.js";
 import { addAnalyzerIntegrationTests } from "./devtools-analyzer-tests.js";
 import { addStage4Tests } from "./devtools-stage4-tests.js";
+import { addStage5Tests } from "./devtools-stage5-tests.js";
 import { createMockProvider } from "../transcript/providers/adapters/mock.js";
 
 function getStoredTranscript(appState) {
@@ -89,10 +90,13 @@ function buildTests(appState) {
             const doc = parseSample(id);
             return Object.isFrozen(doc) && Object.isFrozen(doc.source) && Object.isFrozen(doc.segments);
         });
-        // Stage 2B update: JSON is implemented; the others are still placeholders.
-        if (id === "json") return;
-        add(`${id}: reports placeholder parse status`, () =>
-            parseSample(id).parse.status === "not_implemented" && parseSample(id).processing.parsed === false);
+        // Stage 5 update: every format parser is implemented and
+        // produces segments (previously txt/srt/vtt were placeholders).
+        add(`${id}: parser produces a complete document with segments`, () => {
+            const doc = parseSample(id);
+            return doc.parse.status === "complete" && doc.processing.parsed === true &&
+                doc.segments.length > 0;
+        });
     });
 
     add("json: parses records into segments, raw values kept (Stage 2B)", () => {
@@ -115,11 +119,11 @@ function buildTests(appState) {
         const doc = parseSample("vtt");
         const before = JSON.stringify(doc);
         const report = validateTranscript(doc);
-        // Stage 4: the validator runs real checks. A vtt sample has an
-        // unimplemented parser, so the report carries a QUALITY_CONCERN
-        // warning — but the document itself must be untouched.
+        // Stage 5: the vtt sample now parses completely, so a clean
+        // document validates with no issues — but the document itself
+        // must be untouched by validation.
         return JSON.stringify(doc) === before && report.valid === true && Array.isArray(report.issues) &&
-            report.issues.some((issue) => issue.type === ISSUE_TYPES.QUALITY_CONCERN);
+            report.issues.length === 0;
     });
 
     add("derived layer creates a new document", () => {
@@ -183,6 +187,11 @@ function buildTests(appState) {
     // pipeline → chunking, JSON export + download, analyzer with
     // the deterministic question-pattern extractor.
     addStage4Tests(add);
+
+    // Stage 5: transcript format parser completion — TXT, SRT, and
+    // VTT produce canonical TranscriptDocuments, verified through
+    // validate → chunk → export → analysis.
+    addStage5Tests(add);
 
     return tests;
 }

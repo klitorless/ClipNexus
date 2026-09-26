@@ -15,7 +15,7 @@ The goal is to build a reliable pipeline that preserves evidence, uncertainty, p
 
 Current Status
 
-Development stage: Stage 4 application integration complete — chunking, export, and analysis are wired into the app
+Development stage: Stage 5 transcript format parser completion — TXT, SRT, and VTT files now parse into canonical TranscriptDocuments
 
 Stage| Status| Description
 Stage 1| ✅ Complete| Frontend shell and application structure
@@ -27,8 +27,9 @@ Stage 2B| ✅ Complete| Supadata YouTube transcript provider
 Stage 2C| ✅ Complete| Transcript chunking and export workflow
 Stage 3| ✅ Complete| Analysis contracts + extractor seam (no AI yet)
 Stage 4| ✅ Complete| Application integration: validation checks, pipeline chunking, JSON export, analysis tab with deterministic extractor
-Stage 5| ⏳ Planned| POI extraction and event reconciliation
-Stage 6| ⏳ Planned| ClipSpec generation
+Stage 5| ✅ Complete| Transcript format parsers: TXT, SRT, and VTT → canonical segments through the existing pipeline
+Stage 6| ⏳ Planned| POI extraction and event reconciliation
+Stage 7| ⏳ Planned| ClipSpec generation
 Future| ⏳ Planned| ClipNexus editing/rendering engine
 
 The current application already has a functioning canonical transcript pipeline and a real YouTube transcript provider.
@@ -1046,9 +1047,9 @@ vod-analyzer/
     │   │       ├── youtube-transcript-api.js  Placeholder (NOT_IMPLEMENTED, no network)
     │   │       └── mock.js                    Deterministic test providers (never registered by default)
     │   ├── formats/
-    │   │   ├── txt.js         Plain-text parser (placeholder + Stage 2 contract)
-    │   │   ├── srt.js         SubRip parser (placeholder + Stage 2 contract)
-    │   │   ├── vtt.js         WebVTT parser (placeholder + Stage 2 contract)
+    │   │   ├── txt.js         Plain-text parser (implemented in Stage 5: one segment per line, optional [HH:MM:SS] prefix and "Name:" speaker labels)
+    │   │   ├── srt.js         SubRip parser (implemented in Stage 5: cues, HH:MM:SS,mmm ranges, verbatim text)
+    │   │   ├── vtt.js         WebVTT parser (implemented in Stage 5: header/cue ids, MM:SS.mmm or HH:MM:SS.mmm, <v> speakers)
     │   │   └── json.js        JSON parser (implemented in Stage 2B)
     │   ├── validator.js       Issue types, severity, issue factory, observational validator
     │   └── chunker.js         Chunk shape + defaults (600 s windows, 60 s overlap)
@@ -1140,6 +1141,7 @@ The 25 Stage 2B checks use a fake `fetch` and a local credential store. They mak
 - **Credentials:** no key → `CREDENTIAL_REQUIRED` with no request sent; the key is validated; clearing it works.
 - **Attempts:** a stale result is ignored; replacement keeps the project id and video; a failure keeps an imported transcript.
 - **JSON parser:** arrays and `{segments}`, s vs. ms keys, ambiguity, skipped records, and total failure.
+- **TXT/SRT/VTT parsers:** valid and malformed inputs, line endings, speaker labels, `<v>` tags, cue identifiers vs. canonical ids, malformed-timestamp reporting, determinism, cross-format equivalence, and the full validate → chunk → export → analysis flow per format.
 - **UI and security:** honest status labels; an entered key is never rendered; the switch list offers only runnable providers; the success view shows provenance and a language mismatch; the CSP allows only the app and `api.supadata.ai`.
 
 Stage 2B was also checked by hand against the live Supadata API with a real key. In a headless browser, a real transcript came back (61 segments, with native/English provenance), and a bad key gave a real 401 → `AUTHENTICATION_FAILED` with the imported transcript kept. The only external host contacted was `api.supadata.ai`, and nothing was written to storage.
@@ -1156,7 +1158,7 @@ Stage 2B was also checked by hand against the live Supadata API with a real key.
 
 ## Current limitations
 
-- Only JSON is parsed. TXT, SRT, and VTT have 0 segments and `parse.status` is `not_implemented`.
+- TXT, SRT, VTT, and JSON are parsed into canonical segments. TXT transcripts without timestamps get `start.status` "missing" (never invented); SRT/VTT timestamps are parsed to seconds, unparseable values are marked "malformed" for the validator to report.
 - Validation runs structural checks only (document shape, segment identity, empty text, malformed/missing timestamps). Semantic checks (gaps, overlaps, resets, ordering) are not implemented.
 - Chunking runs automatically when a transcript loads, using 600 s windows with 60 s overlap. Chunk membership is by segment start time only.
 - Format detection is extension-only.

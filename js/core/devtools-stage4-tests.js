@@ -120,7 +120,10 @@ export function addStage4Tests(add) {
     });
 
     add("stage4: validator warns when the parser did not complete", () => {
-        const rawText = "plain text, no parser";
+        // Stage 5: every format parser is implemented, so an
+        // incomplete parse now comes from an unreadable file (here,
+        // an empty one) rather than a placeholder parser.
+        const rawText = "";
         const doc = buildTranscriptDocument({
             rawText, format: "txt", filename: "notes.txt",
             size: rawText.length, acquisition: createFileAcquisition()
