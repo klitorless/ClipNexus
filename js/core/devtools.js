@@ -30,6 +30,7 @@ import { addSupadataTests } from "./devtools-supadata-tests.js";
 import { addAnalysisTests } from "./devtools-analysis-tests.js";
 import { addChunkingTests } from "./devtools-chunking-tests.js";
 import { addAnalyzerIntegrationTests } from "./devtools-analyzer-tests.js";
+import { addStage4Tests } from "./devtools-stage4-tests.js";
 import { createMockProvider } from "../transcript/providers/adapters/mock.js";
 
 function getStoredTranscript(appState) {
@@ -114,7 +115,11 @@ function buildTests(appState) {
         const doc = parseSample("vtt");
         const before = JSON.stringify(doc);
         const report = validateTranscript(doc);
-        return JSON.stringify(doc) === before && report.valid === null && Array.isArray(report.issues);
+        // Stage 4: the validator runs real checks. A vtt sample has an
+        // unimplemented parser, so the report carries a QUALITY_CONCERN
+        // warning — but the document itself must be untouched.
+        return JSON.stringify(doc) === before && report.valid === true && Array.isArray(report.issues) &&
+            report.issues.some((issue) => issue.type === ISSUE_TYPES.QUALITY_CONCERN);
     });
 
     add("derived layer creates a new document", () => {
@@ -173,6 +178,11 @@ function buildTests(appState) {
     // Analyzer/extraction seam: TranscriptDocument → chunks →
     // analyzer → structured evidence (no AI integration).
     addAnalyzerIntegrationTests(add);
+
+    // Stage 4: application integration — validator checks,
+    // pipeline → chunking, JSON export + download, analyzer with
+    // the deterministic question-pattern extractor.
+    addStage4Tests(add);
 
     return tests;
 }

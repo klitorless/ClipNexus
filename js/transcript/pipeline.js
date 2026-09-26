@@ -22,10 +22,13 @@ export function buildTranscriptDocument({ rawText, format, filename, size, lastM
     const parsed = parseTranscript({ rawText, format, filename, size, lastModified, acquisition });
 
     // Validation observes; its report is attached as a NEW layer.
+    // The valid verdict travels with the report so the UI can
+    // distinguish "passed" from "issues found" (errors present).
     const report = validateTranscript(parsed);
     return deepFreeze(withDerivedLayer(parsed, {
         validation: {
             status: report.status,
+            valid: report.valid,
             validatedAt: report.validatedAt,
             checks: report.checks,
             issues: report.issues

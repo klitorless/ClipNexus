@@ -123,8 +123,11 @@ function assertScope(scope) {
  *   scope: { type: "full" }
  *        | { type: "partial", segmentIds: string[] }  (at least one)
  *
- * chunkId is reserved for a future chunking stage and omitted
- * until chunk-scoped analysis exists. Do not invent chunk behavior.
+ * chunkId is the id of a Stage 2C chunk on the transcript under
+ * analysis. When present, the analyzer resolves the chunk from
+ * the document and narrows the analysis window to it (full scope
+ * → the chunk's segments; partial scope → the requested ids,
+ * each of which must lie inside the chunk).
  */
 export function createAnalysisRequest({
     id = createRandomId("areq"),

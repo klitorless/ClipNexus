@@ -15,19 +15,20 @@ The goal is to build a reliable pipeline that preserves evidence, uncertainty, p
 
 Current Status
 
-Development stage: Stage 3 analysis contracts + extraction seam complete — first real extractor next
+Development stage: Stage 4 application integration complete — chunking, export, and analysis are wired into the app
 
 Stage| Status| Description
 Stage 1| ✅ Complete| Frontend shell and application structure
 Stage 1.5| ✅ Complete| Canonical transcript/project architecture
-Stage 1.6| ✅ Complete| Transcript validation and data integrity
+Stage 1.6| ✅ Complete| Project & video foundation
 Stage 1.7| ✅ Complete| Architecture hardening and regression testing
 Stage 2A| ✅ Complete| Provider/acquisition architecture
 Stage 2B| ✅ Complete| Supadata YouTube transcript provider
 Stage 2C| ✅ Complete| Transcript chunking and export workflow
 Stage 3| ✅ Complete| Analysis contracts + extractor seam (no AI yet)
-Stage 4| ⏳ Planned| POI extraction and event reconciliation
-Stage 5| ⏳ Planned| ClipSpec generation
+Stage 4| ✅ Complete| Application integration: validation checks, pipeline chunking, JSON export, analysis tab with deterministic extractor
+Stage 5| ⏳ Planned| POI extraction and event reconciliation
+Stage 6| ⏳ Planned| ClipSpec generation
 Future| ⏳ Planned| ClipNexus editing/rendering engine
 
 The current application already has a functioning canonical transcript pipeline and a real YouTube transcript provider.
@@ -1070,7 +1071,7 @@ No install or build step. Open `index.html` through any local static server. On 
 Open the browser console (Acode: enable "Show Console Toggler" in Preview settings) and run:
 
 ```js
-await vodAnalyzer.runSelfTests()   // 108 checks, printed as a table (no network)
+await vodAnalyzer.runSelfTests()   // 192 checks, printed as a table (no network)
 vodAnalyzer.listProviders()        // registry descriptors
 vodAnalyzer.registerMockProviders() // optional UI preview: "Mock A (always fails)" + "Mock B (returns test data)"
 vodAnalyzer.inspectProject()    // the frozen Project (or null)
@@ -1156,8 +1157,8 @@ Stage 2B was also checked by hand against the live Supadata API with a real key.
 ## Current limitations
 
 - Only JSON is parsed. TXT, SRT, and VTT have 0 segments and `parse.status` is `not_implemented`.
-- Validation runs no checks (`valid: null`, status `not_implemented`).
-- Chunking returns an empty array.
+- Validation runs structural checks only (document shape, segment identity, empty text, malformed/missing timestamps). Semantic checks (gaps, overlaps, resets, ordering) are not implemented.
+- Chunking runs automatically when a transcript loads, using 600 s windows with 60 s overlap. Chunk membership is by segment start time only.
 - Format detection is extension-only.
 - `File.text()` always decodes as UTF-8 and drops a leading byte-order mark. Non-UTF-8 files (e.g. Windows-1252 SRTs) may show replacement characters.
 - One project (one video, one transcript) at a time, held in memory; it's gone after a page reload.
@@ -1246,7 +1247,7 @@ The AI layer will discover, describe, trace, and preserve uncertainty. It will n
 
 ## Not implemented on purpose (later stages)
 
-Additional real providers (youtube-transcript-api or others), automatic provider fallback, local speech-to-text, TXT/SRT/VTT parsing, validation checks, chunking, YouTube API / IFrame Player API, metadata fetching, embedded video player, playback controls, timestamp seeking, transcript/video sync, POI generation, event reconciliation, AI providers, clip generation or ranking, persistence (localStorage / IndexedDB / backend), database, authentication, cloud storage, payments, Discord integration, and platforms other than YouTube.
+Additional real providers (youtube-transcript-api or others), automatic provider fallback, local speech-to-text, TXT/SRT/VTT parsing, semantic validation checks, YouTube API / IFrame Player API, metadata fetching, embedded video player, playback controls, timestamp seeking, transcript/video sync, POI generation, event reconciliation, AI providers, clip generation or ranking, persistence (localStorage / IndexedDB / backend), database, authentication, cloud storage, payments, Discord integration, and platforms other than YouTube.
 
 ## Future video + transcript workflow
 

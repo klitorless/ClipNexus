@@ -124,13 +124,35 @@ function createEmptyCard() {
     return card;
 }
 
+// Stage 4: export the canonical transcript through the existing
+// JSON exporter. The view never serializes; onExportTranscript
+// (wired in app.js) produces the string and downloads it.
+function createExportCard(exportNotice, onExportTranscript) {
+    const card = createElement("article", "card");
+    card.dataset.section = "export";
+    card.append(createElement("h2", "card-title", "Export"));
+    card.append(createElement("p", "card-body",
+        "Download the canonical transcript as deterministic JSON: segments with " +
+        "text, timestamps, and speakers, in transcript order."));
+    const button = createElement("button", "button button-primary", "Export JSON");
+    button.type = "button";
+    button.addEventListener("click", () => onExportTranscript());
+    card.append(button);
+    if (exportNotice) {
+        card.append(createElement("p", "card-body", exportNotice.message));
+    }
+    return card;
+}
+
 /**
  * @param {HTMLElement} mountElement
  * @param {object|null} project
- * @param {object|null} [acquisitionView]  { acquisition, providers, onSelectionChange, onAcquire }.
- *        Omitted → no acquisition panel (read-only rendering).
+ * @param {object|null} [acquisitionView]  { acquisition, providers, onSelectionChange, onAcquire,
+ *        credentialReady, onCredentialChange }. Omitted → no acquisition panel (read-only rendering).
+ * @param {object|null} [exportView]  { onExportTranscript, exportNotice }.
+ *        Omitted → no export action.
  */
-export function renderTranscriptsView(mountElement, project, acquisitionView = null) {
+export function renderTranscriptsView(mountElement, project, acquisitionView = null, exportView = null) {
     const transcript = project ? project.transcript : null;
     const header = [createLinkedVideoCard(project)];
     if (acquisitionView) header.push(createAcquisitionPanel({ project, ...acquisitionView }));
@@ -147,10 +169,15 @@ export function renderTranscriptsView(mountElement, project, acquisitionView = n
         ["Lines", countLines(transcript.rawText).toLocaleString()]
     ]);
 
+    const exportCard = exportView && exportView.onExportTranscript
+        ? [createExportCard(exportView.exportNotice || null, exportView.onExportTranscript)]
+        : [];
+
     mountElement.replaceChildren(
         ...header,
         sourceCard,
         createPipelineCard(transcript),
+        ...exportCard,
         ...(transcript.segments.length ? [createSegmentPreviewCard(transcript.segments)] : []),
         createRawPreviewCard(transcript.rawText,
             Boolean(transcript.acquisition && transcript.acquisition.type === ACQUISITION_TYPE.PROVIDER))

@@ -29,6 +29,8 @@ import { createProject, withTranscript, applyVideoIdentity, finalizeVideoChange 
 import { resolveVideoUrl, getPlatformLabel } from "./video/video-resolver.js";
 import { getFormatForFilename, getAcceptAttribute, describeSupportedExtensions } from "./transcript/formats.js";
 import { buildTranscriptDocument, buildAcquiredTranscript } from "./transcript/pipeline.js";
+import { chunkDocument } from "./transcript/chunker.js";
+import { exportTranscript } from "./transcript/export.js";
 import { createFileAcquisition } from "./transcript/model.js";
 import { transcriptProviders } from "./transcript/providers/default-providers.js";
 import { providerCredentials } from "./transcript/providers/credentials.js";
@@ -39,7 +41,12 @@ import {
 import { renderSidebar, setActiveNavItem } from "./ui/sidebar.js";
 import { renderDashboard } from "./ui/dashboard.js";
 import { renderTranscriptsView } from "./ui/transcripts.js";
+import { renderAnalysisView } from "./ui/analysis.js";
+import { downloadTextFile } from "./ui/download.js";
 import { createInfoCard } from "./ui/dom.js";
+import { createAnalyzer } from "./analysis/analyzer.js";
+import { createAnalysisRequest } from "./analysis/contracts.js";
+import { createQuestionExtractor } from "./analysis/deterministic-extractor.js";
 
 const elements = {
     sidebar: document.getElementById("sidebar-mount"),
@@ -55,7 +62,6 @@ const placeholderText = {
     pois: "Evidence-supported Points of Interest will appear here.",
     events: "Reconciled event arcs across transcript windows will appear here.",
     clips: "Clip candidates prepared for human review will appear here.",
-    analysis: "Provider-agnostic AI analysis runs will be managed here.",
     settings: "Analysis window, overlap, and provider settings will live here."
 };
 
@@ -77,6 +83,13 @@ function renderView(routeId) {
         onAcquire: handleAcquireTranscript,
         credentialReady: (providerId) => providerCredentials.has(providerId),
         onCredentialChange: handleCredentialChange
+    }, {
+        onExportTranscript: handleExportTranscript,
+        exportNotice: getExportNotice()
+    });
+    else if (routeId === "analysis") renderAnalysisView(elements.content, project, {
+        analysis: getAnalysis(),
+        onAnalyze: handleAnalyze
     });
     else renderPlaceholderView(elements.content, routeId);
 
@@ -150,9 +163,31 @@ function handleVideoUrlSubmit(inputValue) {
 // ---------- File loading ----------
 
 function showUserError(message) {
+    showNoticeCard("Could not load file", message, "Error", "tag tag-danger");
+}
+
+// Non-blocking notice (e.g. a derived layer failed but the
+// transcript itself loaded). Prepend after any navigation or
+// re-render, which would otherwise wipe it.
+function showNoticeCard(title, message, tagText, tagClass) {
     elements.content.prepend(
-        createInfoCard("Could not load file", message, "Error", "tag tag-danger")
+        createInfoCard(title, message, tagText, tagClass)
     );
+}
+
+// Chunking is a derived layer: the pipeline document is never
+// mutated. Returns { document, error } — when chunking fails,
+// the transcript still loads unchunked and the failure is
+// reported distinctly as AppError("chunking_failed").
+function chunkTranscriptDocument(transcript) {
+    try {
+        return { document: chunkDocument(transcript), error: null };
+    } catch (cause) {
+        const error = new AppError("chunking_failed",
+            "The transcript was loaded, but chunking failed. Chunk-based analysis is unavailable.",
+            { transcriptId: transcript && transcript.id ? transcript.id : null }, cause);
+        return { document: transcript, error };
+    }
 }
 
 async function readFileText(file) {
@@ -191,11 +226,18 @@ async function handleFileSelected(event) {
 
     try {
         const transcript = await buildFileTranscript(file);
+        const chunked = chunkTranscriptDocument(transcript);
         const project = state.get("project") || createProject();
         setVideoUrlNotice(null); // Earlier URL message no longer describes the latest action.
         setAcquisition(resetAttempt(getAcquisition())); // An earlier provider result no longer describes the transcript.
-        state.set("project", withTranscript(project, transcript));
+        setExportNotice(null); // An earlier export notice no longer describes the transcript.
+        setAnalysis({ status: "idle" }); // Earlier analysis results described a different transcript.
+        state.set("project", withTranscript(project, chunked.document));
         navigate("transcripts");
+        if (chunked.error) {
+            showNoticeCard("Chunking failed",
+                reportError(chunked.error, "Transcript load"), "Warning", "tag");
+        }
     } catch (error) {
         showUserError(reportError(error, "Transcript load"));
     }
@@ -266,7 +308,115 @@ async function handleAcquireTranscript(override = {}) {
         return;
     }
     setAcquisition(completeAttempt(getAcquisition(), attemptId, { source: result.source }));
-    state.set("project", applied.project); // triggers render
+    setExportNotice(null); // The transcript was replaced; an earlier export notice no longer applies.
+    setAnalysis({ status: "idle" }); // Earlier analysis results described a different transcript.
+    const chunked = chunkTranscriptDocument(applied.project.transcript);
+    state.set("project", withTranscript(applied.project, chunked.document)); // triggers render
+    if (chunked.error) {
+        showNoticeCard("Chunking failed",
+            reportError(chunked.error, "Transcript acquisition"), "Warning", "tag");
+    }
+}
+
+// ---------- Transcript export ----------
+
+function getExportNotice() {
+    const ui = state.get("ui");
+    return (ui && ui.exportNotice) || null;
+}
+
+function setExportNotice(notice) {
+    state.set("ui", { ...state.get("ui"), exportNotice: notice });
+}
+
+// Stage 4: export the canonical transcript through the existing
+// JSON exporter. The exporter never mutates state; the only
+// browser effect is the download itself.
+function handleExportTranscript() {
+    const project = state.get("project");
+    const transcript = project ? project.transcript : null;
+    if (!transcript) {
+        setExportNotice({ ok: false, message: "No transcript is loaded." });
+        refreshTranscriptsView();
+        return;
+    }
+    try {
+        const text = exportTranscript(transcript, "json");
+        downloadTextFile(`${transcript.id}.json`, text);
+        setExportNotice({
+            ok: true,
+            message: `Exported ${transcript.segments.length} segment(s) as JSON (${text.length.toLocaleString()} characters).`
+        });
+    } catch (error) {
+        setExportNotice({ ok: false, message: reportError(error, "Transcript export") });
+    }
+    refreshTranscriptsView();
+}
+
+// ---------- Analysis ----------
+
+// Stage 4: the analyzer runs behind its extraction seam with a
+// deterministic, rule-based extractor. No AI, no network, no
+// ranking — an integration probe that proves scoped transcript
+// material reaches the extractor and evidence stays traceable.
+const analyzer = createAnalyzer({ extract: createQuestionExtractor() });
+
+function getAnalysis() {
+    const ui = state.get("ui");
+    return (ui && ui.analysis) || { status: "idle" };
+}
+
+function setAnalysis(next) {
+    state.set("ui", { ...state.get("ui"), analysis: next });
+}
+
+function refreshAnalysisView() {
+    if (state.get("route") === "analysis") renderView("analysis");
+}
+
+// Build the AnalysisRequest for the requested scope. Chunk scope
+// is scope.type "partial" over the chunk's segment ids plus the
+// chunkId; the analyzer owns scope validation and rejects
+// anything outside the contract.
+function buildAnalysisRequest(transcript, scopeType, chunkId) {
+    if (scopeType === "chunk") {
+        const chunks = Array.isArray(transcript.chunks) ? transcript.chunks : [];
+        const chunk = chunks.find((entry) => entry && entry.id === chunkId) || null;
+        if (!chunk) {
+            throw new AppError("unknown_chunk_id",
+                "The selected chunk is no longer available. Reload the transcript and try again.",
+                { chunkId });
+        }
+        return createAnalysisRequest({
+            transcriptId: transcript.id,
+            scope: { type: "partial", segmentIds: [...chunk.segmentIds] },
+            chunkId: chunk.id
+        });
+    }
+    return createAnalysisRequest({
+        transcriptId: transcript.id,
+        scope: { type: "full" }
+    });
+}
+
+async function handleAnalyze({ scopeType, chunkId }) {
+    const project = state.get("project");
+    const transcript = project ? project.transcript : null;
+    if (!transcript) {
+        setAnalysis({ status: "error", error: "No transcript is loaded." });
+        refreshAnalysisView();
+        return;
+    }
+    setAnalysis({ status: "running" });
+    refreshAnalysisView();
+    try {
+        const request = buildAnalysisRequest(transcript, scopeType, chunkId);
+        const result = await analyzer.analyze(request, transcript);
+        setAnalysis({ status: "done", request, result });
+    } catch (error) {
+        setAnalysis({ status: "error", error: reportError(error, "Analysis") });
+    }
+    refreshAnalysisView();
 }
 
 // ---------- Startup ----------
