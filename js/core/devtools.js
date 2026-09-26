@@ -32,6 +32,7 @@ import { addChunkingTests } from "./devtools-chunking-tests.js";
 import { addAnalyzerIntegrationTests } from "./devtools-analyzer-tests.js";
 import { addStage4Tests } from "./devtools-stage4-tests.js";
 import { addStage5Tests } from "./devtools-stage5-tests.js";
+import { addStage6Tests } from "./devtools-stage6-tests.js";
 import { createMockProvider } from "../transcript/providers/adapters/mock.js";
 
 function getStoredTranscript(appState) {
@@ -192,6 +193,10 @@ function buildTests(appState) {
     // VTT produce canonical TranscriptDocuments, verified through
     // validate → chunk → export → analysis.
     addStage5Tests(add);
+
+    // Stage 6: semantic temporal validation — deterministic
+    // ordering/reset/overlap/end-before-start checks, observe-only.
+    addStage6Tests(add);
 
     return tests;
 }

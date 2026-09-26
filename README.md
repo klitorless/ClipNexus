@@ -28,8 +28,9 @@ Stage 2C| ✅ Complete| Transcript chunking and export workflow
 Stage 3| ✅ Complete| Analysis contracts + extractor seam (no AI yet)
 Stage 4| ✅ Complete| Application integration: validation checks, pipeline chunking, JSON export, analysis tab with deterministic extractor
 Stage 5| ✅ Complete| Transcript format parsers: TXT, SRT, and VTT → canonical segments through the existing pipeline
-Stage 6| ⏳ Planned| POI extraction and event reconciliation
-Stage 7| ⏳ Planned| ClipSpec generation
+Stage 6| ✅ Complete| Semantic temporal validation: deterministic end-before-start, ordering/reset, and overlap checks over the canonical transcript (observe-only, no repairs)
+Stage 7| ⏳ Planned| POI extraction and event reconciliation
+Stage 8| ⏳ Planned| ClipSpec generation
 Future| ⏳ Planned| ClipNexus editing/rendering engine
 
 The current application already has a functioning canonical transcript pipeline and a real YouTube transcript provider.
@@ -453,7 +454,7 @@ ClipNexus uses an internal self-test/development test system to protect architec
 
 The Stage 3 implementation currently has:
 
-165 / 165 tests passing
+281 / 281 tests passing
 
 The test suite covers areas including:
 
@@ -1072,7 +1073,7 @@ No install or build step. Open `index.html` through any local static server. On 
 Open the browser console (Acode: enable "Show Console Toggler" in Preview settings) and run:
 
 ```js
-await vodAnalyzer.runSelfTests()   // 192 checks, printed as a table (no network)
+await vodAnalyzer.runSelfTests()   // 281 checks, printed as a table (no network)
 vodAnalyzer.listProviders()        // registry descriptors
 vodAnalyzer.registerMockProviders() // optional UI preview: "Mock A (always fails)" + "Mock B (returns test data)"
 vodAnalyzer.inspectProject()    // the frozen Project (or null)
@@ -1159,7 +1160,7 @@ Stage 2B was also checked by hand against the live Supadata API with a real key.
 ## Current limitations
 
 - TXT, SRT, VTT, and JSON are parsed into canonical segments. TXT transcripts without timestamps get `start.status` "missing" (never invented); SRT/VTT timestamps are parsed to seconds, unparseable values are marked "malformed" for the validator to report.
-- Validation runs structural checks only (document shape, segment identity, empty text, malformed/missing timestamps). Semantic checks (gaps, overlaps, resets, ordering) are not implemented.
+- Validation runs structural checks (document shape, segment identity, empty text, malformed/missing timestamps) plus deterministic temporal checks: end-before-start, backward timestamp ordering (distinguishing resets from local moves), and genuine interval overlap (exact boundary touches excluded). All findings are observe-only warnings; the document is never repaired. Gap detection is intentionally deferred (the repository defines no deterministic gap threshold), as are timestamp jumps and duplicate timestamps.
 - Chunking runs automatically when a transcript loads, using 600 s windows with 60 s overlap. Chunk membership is by segment start time only.
 - Format detection is extension-only.
 - `File.text()` always decodes as UTF-8 and drops a leading byte-order mark. Non-UTF-8 files (e.g. Windows-1252 SRTs) may show replacement characters.

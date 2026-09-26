@@ -1,12 +1,11 @@
 // ==========================================================
-// validator.js  (Stage 4 — minimum structural checks implemented)
+// validator.js  (Stage 6 — temporal semantic checks added)
 // Responsibility: OBSERVE a TranscriptDocument and report
 // source-quality issues. The validator never modifies the
 // document or its segments; it only returns a report.
 // pipeline.js attaches that report as a new derived layer.
 //
-// Stage 4 implements the minimum structural layer the
-// application pipeline needs to proceed safely:
+// Stage 4 implemented the minimum structural layer:
 //
 //   document_structure  input is a TranscriptDocument whose
 //                       segments have the shape downstream
@@ -19,14 +18,44 @@
 //   timestamps          malformed timestamps are surfaced (warning);
 //                       missing timestamps are noted (info)
 //
-// Checks are deterministic and read-only. `valid` is false only
-// when an ERROR-severity issue exists; warnings and info never
-// reject a transcript.
+// Stage 6 adds the temporal semantic layer (check
+// "temporal_semantics"), still observe-only:
+//
+//   end_before_start    a segment whose valid end precedes its
+//                       valid start (warning, QUALITY_CONCERN)
+//   ordering            consecutive segments whose valid starts
+//                       move backward: a new minimum over all
+//                       preceding valid starts is reported as
+//                       TIMESTAMP_RESET, any other backward move
+//                       as ORDER_SUSPICIOUS (warnings)
+//   overlap             consecutive segments whose valid
+//                       start/end intervals genuinely overlap
+//                       (warning, TIMESTAMP_OVERLAP); touching
+//                       exactly at the boundary is NOT overlap
+//
+// Temporal rules (all deterministic and read-only):
+//   - Only timestamps with a valid numeric status (parsed,
+//     derived) participate in temporal arithmetic. Missing
+//     timestamps are unknown and never manufacture findings;
+//     malformed timestamps are never coerced to a number and
+//     never create findings involving the segments that carry
+//     them, so they cannot cascade false errors.
+//   - Zero-length segments (start === end) are valid; no issue.
+//   - A missing end never participates in overlap detection,
+//     and no end is ever manufactured.
+//   - Gap detection is intentionally NOT implemented: the
+//     repository defines no deterministic gap threshold, and
+//     silence is not evidence of a bad transcript.
+//   - Duplicate consecutive starts are not reported
+//     (TIMESTAMP_DUPLICATE stays reserved).
+//
+// `valid` is false only when an ERROR-severity issue exists;
+// warnings and info never reject a transcript.
 //
 // Explicitly NOT checked here (future work): timestamp gaps,
-// overlaps, resets, jumps, duplicate timestamps, ordering,
-// speaker inference, section structure. Their issue types stay
-// reserved in the catalogue below.
+// jumps, duplicate timestamps, speaker inference, section
+// structure. Their issue types stay reserved in the catalogue
+// below.
 // ==========================================================
 
 import { AppError } from "../core/errors.js";
@@ -35,6 +64,8 @@ import { VALIDATION_STATUS, PARSE_STATUS, TIMESTAMP_STATUS } from "./model.js";
 // Catalogue of issue types. Stage 4 checks emit:
 //   QUALITY_CONCERN, SEGMENT_DUPLICATE, SEGMENT_EMPTY,
 //   TIMESTAMP_MALFORMED, TIMESTAMP_MISSING.
+// Stage 6 adds: QUALITY_CONCERN (end-before-start),
+//   TIMESTAMP_RESET, ORDER_SUSPICIOUS, TIMESTAMP_OVERLAP.
 // The rest remain reserved for future semantic checks.
 export const ISSUE_TYPES = Object.freeze({
     TIMESTAMP_GAP: "timestamp_gap",
@@ -125,6 +156,7 @@ export function validateTranscript(transcript) {
     checkSegmentIdsUnique(transcript, checks, emit);
     checkSegmentText(transcript, checks, emit);
     checkTimestamps(transcript, checks, emit);
+    checkTemporalSemantics(transcript, checks, emit);
 
     const hasError = issues.some((issue) => issue.severity === SEVERITY.ERROR);
     return {
@@ -264,4 +296,112 @@ function checkTimestamps(transcript, checks, emit) {
             segmentIds: missingIds
         });
     }
+}
+
+// ---------- temporal_semantics (Stage 6) ----------
+//
+// A timestamp participates in temporal arithmetic only when
+// the canonical model marks it as a valid numeric reading
+// ("parsed" or "derived") and it carries a finite number.
+// Missing, malformed, and ambiguous timestamps are unknown:
+// never zero, never coerced, never compared.
+function usableSeconds(timestamp) {
+    if (!timestamp || typeof timestamp !== "object") return null;
+    const numeric = timestamp.status === TIMESTAMP_STATUS.PARSED ||
+        timestamp.status === TIMESTAMP_STATUS.DERIVED;
+    return numeric && Number.isFinite(timestamp.seconds) ? timestamp.seconds : null;
+}
+
+// Deterministic seconds formatting for issue messages.
+function formatSeconds(seconds) {
+    return String(Math.round(seconds * 1000) / 1000);
+}
+
+function checkTemporalSemantics(transcript, checks, emit) {
+    checks.push("temporal_semantics");
+    const segments = transcript.segments;
+    // Lowest valid start observed in segments before the current
+    // one; drives the reset-vs-backward distinction.
+    let minStart = null;
+    for (let i = 0; i < segments.length; i++) {
+        const current = segments[i];
+        checkEndBeforeStart(current, emit);
+        if (i > 0) {
+            checkOrdering(segments[i - 1], current, minStart, emit);
+            checkOverlap(segments[i - 1], current, emit);
+        }
+        const start = usableSeconds(current.start);
+        if (start !== null && (minStart === null || start < minStart)) minStart = start;
+    }
+}
+
+// A segment whose valid end precedes its valid start. Reported
+// as observed; the values are never swapped or repaired.
+function checkEndBeforeStart(segment, emit) {
+    const start = usableSeconds(segment.start);
+    const end = usableSeconds(segment.end);
+    if (start === null || end === null || end >= start) return;
+    emit({
+        type: ISSUE_TYPES.QUALITY_CONCERN,
+        severity: SEVERITY.WARNING,
+        message: `Segment ${segment.id} ends at ${formatSeconds(end)}s, ` +
+            `before it starts at ${formatSeconds(start)}s.`,
+        segmentIds: [segment.id],
+        startSeconds: start,
+        endSeconds: end
+    });
+}
+
+// Backward movement between consecutive valid starts. A start
+// below every preceding valid start is a TIMESTAMP_RESET; any
+// other backward move is ORDER_SUSPICIOUS. One issue per event,
+// factual language only, no speculation about cause.
+function checkOrdering(previous, current, minStart, emit) {
+    const previousStart = usableSeconds(previous.start);
+    const currentStart = usableSeconds(current.start);
+    if (previousStart === null || currentStart === null) return;
+    if (currentStart >= previousStart) return;
+    const isReset = minStart !== null && currentStart < minStart;
+    emit({
+        type: isReset ? ISSUE_TYPES.TIMESTAMP_RESET : ISSUE_TYPES.ORDER_SUSPICIOUS,
+        severity: SEVERITY.WARNING,
+        message: isReset
+            ? `Segment ${current.id} starts at ${formatSeconds(currentStart)}s, ` +
+              "earlier than every preceding valid segment start " +
+              `(earliest was ${formatSeconds(minStart)}s).`
+            : `Segment ${current.id} starts at ${formatSeconds(currentStart)}s, ` +
+              `earlier than the previous segment ${previous.id}'s valid start ` +
+              `(${formatSeconds(previousStart)}s).`,
+        segmentIds: [previous.id, current.id],
+        startSeconds: currentStart,
+        endSeconds: previousStart
+    });
+}
+
+// Genuine interval overlap between consecutive segments. Both
+// segments need valid starts AND valid ends; a missing end is
+// never manufactured, and a segment whose own end precedes its
+// start is reported by end_before_start instead — its interval
+// cannot establish overlap. Strict comparison: touching
+// exactly at the boundary is not overlap.
+function checkOverlap(previous, current, emit) {
+    const aStart = usableSeconds(previous.start);
+    const aEnd = usableSeconds(previous.end);
+    const bStart = usableSeconds(current.start);
+    const bEnd = usableSeconds(current.end);
+    if (aStart === null || aEnd === null || bStart === null || bEnd === null) return;
+    if (aEnd < aStart || bEnd < bStart) return;
+    const overlapStart = Math.max(aStart, bStart);
+    const overlapEnd = Math.min(aEnd, bEnd);
+    if (overlapStart >= overlapEnd) return;
+    emit({
+        type: ISSUE_TYPES.TIMESTAMP_OVERLAP,
+        severity: SEVERITY.WARNING,
+        message: `Segments ${previous.id} (${formatSeconds(aStart)}s → ` +
+            `${formatSeconds(aEnd)}s) and ${current.id} ` +
+            `(${formatSeconds(bStart)}s → ${formatSeconds(bEnd)}s) overlap.`,
+        segmentIds: [previous.id, current.id],
+        startSeconds: overlapStart,
+        endSeconds: overlapEnd
+    });
 }

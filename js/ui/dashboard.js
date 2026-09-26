@@ -35,15 +35,16 @@ function createStatusCard() {
             "card-body",
             "Available now: identify a YouTube video from its URL (including a start-time hint), " +
             "import a transcript file as raw source evidence, or fetch the video's transcript from " +
-            "Supadata with your own API key on the Transcripts page. JSON transcripts are parsed into " +
-            "timestamped segments, structurally validated, chunked into deterministic windows, and " +
+            "Supadata with your own API key on the Transcripts page. Transcripts are parsed into " +
+            "timestamped segments, structurally and temporally validated (ordering, resets, overlaps, " +
+            "end-before-start), chunked into deterministic windows, and " +
             "exportable as JSON. The Analysis tab runs the analyzer with a deterministic question-pattern " +
             "extractor, producing traceable evidence."
         ),
         createElement(
             "p",
             "card-body",
-            "Not built yet: parsing for TXT/SRT/VTT files, semantic validation checks, video metadata, an embedded " +
+            "Not built yet: video metadata, an embedded " +
             "player, real AI extractors, POI extraction, event reconciliation, ClipSpec, and clips. Projects and API keys are forgotten when the page reloads."
         ),
         createElement(
@@ -52,7 +53,8 @@ function createStatusCard() {
             "Completed: Stage 1.5 — Transcript Data Foundation · Stage 1.6 — Project & Video Foundation · " +
             "Stage 1.7 — Project & Video Foundation Hardening · Stage 2A — Transcript Acquisition Architecture · " +
             "Stage 2B — First Real Transcript Provider · Stage 2C — Chunking & Export · " +
-            "Stage 3 — Analysis Contracts & Extraction Seam"
+            "Stage 3 — Analysis Contracts & Extraction Seam · Stage 4 — Application Integration · " +
+            "Stage 5 — Transcript Format Parsers · Stage 6 — Semantic Temporal Validation"
         )
     );
     return card;
