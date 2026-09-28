@@ -37,6 +37,48 @@ The current application already has a functioning canonical transcript pipeline 
 
 ---
 
+## Visual overview
+
+Each visual below is labeled with what it represents: **CURRENT** (implemented behavior), **ARCHITECTURE** (how the system is structured), or **CONCEPTUAL / FUTURE** (direction, not built yet). Nothing here shows a feature that doesn't exist.
+
+### What works today — CURRENT
+
+![What ClipNexus does today](docs/images/v1-what-works-today.webp)
+
+Acquire (file upload or Supadata) → Parse → Validate → Chunk → Export & Analyze. POIs, clips, and editing remain planned.
+
+### Roadmap: implemented vs. planned — ARCHITECTURE
+
+![Roadmap: implemented vs planned](docs/images/v5-roadmap.webp)
+
+Teal stages are implemented and tested. Gray stages (POI extraction, event reconciliation, ClipSpec, editing engine) are planned and intentionally shown inactive.
+
+### Canonical transcript model — ARCHITECTURE
+
+![Canonical transcript model](docs/images/v4-canonical-model.webp)
+
+Source-observed data stays separate from derived data. The document is frozen; derived layers never overwrite source evidence.
+
+### Validation report — temporal checks (Stage 6) — CURRENT
+
+![Validation report — temporal checks](docs/images/v3-validation-report.webp)
+
+The Stage 6 validator reports end-before-start, backward ordering (resets vs. local moves), and genuine overlap as observe-only warnings. It never repairs the document. (The image abbreviates the issue names as `time_*`; the real identifiers are `timestamp_reset`, `timestamp_overlap`, and `timestamp_missing`.)
+
+### Self-test console — CURRENT
+
+![Self-test console](docs/images/v2-selftest-console.webp)
+
+`await vodAnalyzer.runSelfTests()` runs 281 checks in the browser console with no network calls. No pytest, no CI — this is the real interface.
+
+### End-product vision — CONCEPTUAL / FUTURE
+
+![End-product vision](docs/images/v8-end-product-vision.webp)
+
+The long-term direction: one tab where a VOD from Twitch, Kick, YouTube, Instagram, Facebook, or TikTok is transcribed, points of interest are found, the user picks clips, chooses a template (or builds a custom one), AI performs the edit with subtitles, and finished videos post to every platform. **None of this is implemented.** It exists here so the architecture above can be judged against where it's heading.
+
+---
+
 What Is ClipNexus?
 
 ClipNexus is intended to become a modular system for analyzing long-form video content.
@@ -592,15 +634,16 @@ Phase 2 — Transcript Infrastructure
 - [x] Supadata provider
 - [x] Provider error normalization
 - [x] Provenance tracking
-- [ ] Transcript chunking
-- [ ] Transcript export
-- [ ] Chunk export
-- [ ] Additional transcript formats/providers
+- [x] Transcript chunking
+- [x] Transcript export
+- [x] Chunk export
+- [x] Additional transcript formats (TXT, SRT, VTT, JSON)
+- [ ] Additional providers
 
 Phase 3 — Evidence Analysis
 
-- [ ] Evidence model
-- [ ] Analysis contracts
+- [x] Evidence model
+- [x] Analysis contracts
 - [ ] Context extraction
 - [ ] Source limitation reporting
 - [ ] Structured AI analysis
@@ -1250,7 +1293,9 @@ The AI layer will discover, describe, trace, and preserve uncertainty. It will n
 
 ## Not implemented on purpose (later stages)
 
-Additional real providers (youtube-transcript-api or others), automatic provider fallback, local speech-to-text, TXT/SRT/VTT parsing, semantic validation checks, YouTube API / IFrame Player API, metadata fetching, embedded video player, playback controls, timestamp seeking, transcript/video sync, POI generation, event reconciliation, AI providers, clip generation or ranking, persistence (localStorage / IndexedDB / backend), database, authentication, cloud storage, payments, Discord integration, and platforms other than YouTube.
+Additional real providers (youtube-transcript-api or others), automatic provider fallback, local speech-to-text, YouTube API / IFrame Player API, metadata fetching, embedded video player, playback controls, timestamp seeking, transcript/video sync, POI generation, event reconciliation, AI providers, clip generation or ranking, persistence (localStorage / IndexedDB / backend), database, authentication, cloud storage, payments, Discord integration, and platforms other than YouTube.
+
+(Transcript parsing for TXT/SRT/VTT/JSON and semantic temporal validation are implemented — Stages 5 and 6 — and are documented above.)
 
 ## Future video + transcript workflow
 
