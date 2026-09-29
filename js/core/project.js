@@ -10,7 +10,8 @@
 //   ├── alignment   how transcript time maps to video time
 //   ├── analysis    reserved
 //   ├── pois        normalized POIs (Stage 7: withPois)
-//   └── events / clips  reserved
+//   └── events       reconciled Events (Stage 8: withEvents)
+//   └── clips        reserved
 //
 // The transcript is stored by reference, unchanged. Video data
 // is NOT copied into the transcript or its segments. A future
@@ -24,6 +25,7 @@ import { createRandomId } from "./ids.js";
 import { AppError } from "./errors.js";
 import { deepFreeze } from "../transcript/model.js";
 import { assertPoi } from "../analysis/pois.js";
+import { assertEvent } from "../analysis/events.js";
 import { createVideo, isSameVideo, isSameStartPosition, withStartPosition } from "../video/video-model.js";
 
 export const PROJECT_SCHEMA_VERSION = 1;
@@ -114,6 +116,17 @@ export function withPois(project, pois) {
         throw new AppError("invalid_pois", "withPois needs an array of POIs.", { pois });
     }
     return withChanges(project, { pois: pois.map(assertPoi) });
+}
+
+// Stage 8: attach reconciled Events. Every entry must already be
+// a canonical, frozen Event (createEvent / reconcilePois
+// output); the project does not normalize reconciler output.
+// The project stays frozen; this returns a NEW project.
+export function withEvents(project, events) {
+    if (!Array.isArray(events)) {
+        throw new AppError("invalid_events", "withEvents needs an array of Events.", { events });
+    }
+    return withChanges(project, { events: events.map(assertEvent) });
 }
 
 /**

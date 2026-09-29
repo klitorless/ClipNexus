@@ -29,8 +29,8 @@ Stage 3| ✅ Complete| Analysis contracts + extractor seam (no AI yet)
 Stage 4| ✅ Complete| Application integration: validation checks, pipeline chunking, JSON export, analysis tab with deterministic extractor
 Stage 5| ✅ Complete| Transcript format parsers: TXT, SRT, and VTT → canonical segments through the existing pipeline
 Stage 6| ✅ Complete| Semantic temporal validation: deterministic end-before-start, ordering/reset, and overlap checks over the canonical transcript (observe-only, no repairs)
-Stage 7| ✅ Complete| Provider-neutral POI extraction: canonical POI domain, evidence contract, extraction provider contract + normalization boundary, deterministic mock provider (event reconciliation still planned)
-Stage 8| ⏳ Planned| ClipSpec generation
+Stage 7| ✅ Complete| Provider-neutral POI extraction: canonical POI domain, evidence contract, extraction provider contract + normalization boundary, deterministic mock provider
+Stage 8| ✅ Complete| Event reconciliation: canonical Event domain, deterministic grouping over observable relationships, provider-neutral reconciler contract + normalization boundary, deterministic mock reconciler (ClipSpec still planned)
 Future| ⏳ Planned| ClipNexus editing/rendering engine
 
 The current application already has a functioning canonical transcript pipeline and a real YouTube transcript provider.
@@ -69,7 +69,7 @@ The Stage 6 validator reports end-before-start, backward ordering (resets vs. lo
 
 ![Self-test console](docs/images/v2-selftest-console.webp)
 
-`await vodAnalyzer.runSelfTests()` runs 322 checks in the browser console with no network calls. No pytest, no CI — this is the real interface.
+`await vodAnalyzer.runSelfTests()` runs 377 checks in the browser console with no network calls. No pytest, no CI — this is the real interface.
 
 ### End-product vision — CONCEPTUAL / FUTURE
 
@@ -403,6 +403,36 @@ POIs are candidates for human review, not automatic publishing decisions. Explic
 
 ---
 
+Events
+
+An Event is a reconciled moment built from canonical POIs — derived interpretation, never a replacement for POIs or transcript evidence. Events are canonical, immutable, deeply frozen data. The traceability chain stays:
+
+Event → POI id(s) → POI.sourceRef → segment id(s) → TranscriptDocument
+
+The canonical Event shape (Stage 8, `js/analysis/events.js`):
+
+- `schemaVersion`, deterministic `id` (`event-000000`, …), `transcriptId`
+- `type`: `single` | `grouped` (what the reconciler observably did — one POI standing alone, or several joined by a deterministic rule; reconcilers cannot invent categories)
+- `label`: human-readable, non-empty
+- `startSeconds` / `endSeconds`: finite numbers ≥ 0, or `null` (null = located by POI evidence, not by time). End without start is rejected; reversed ranges are rejected, never repaired; zero-length ranges are valid
+- `poiIds`: POI ids only — never copied POIs, never transcript text, never array indexes. Every id must resolve to a canonical POI in the reconciliation's transcript; missing references, wrong-transcript POIs, and duplicates are rejected, never silently dropped or repaired
+- `derivation: { reconcilerId, reconcilerName, reconciledAt, candidateIndex, reconcilerRef?, rule }` — `rule` names the deterministic relationship that formed the event (`none` for single events, `temporal_overlap` / `temporal_adjacency` / `shared_evidence`, or `multiple` when several distinct rules fired)
+
+Reconciliation is provider-neutral (`js/analysis/event-reconcilers/`), mirroring the POI provider architecture:
+
+- A reconciler receives only a frozen, curated input (`transcriptId` + POI views with canonical ids, types, temporal anchors, and evidence segment ids) — never mutable Project internals, DOM state, or credentials
+- It returns candidate Events (claims, not Events) or a normalized failure
+- The normalization boundary resolves every POI reference against the canonical POI set, drops all reconciler-specific fields, assigns deterministic ids, and stamps derivation from the reconciler descriptor — never from the response
+- Failures are normalized to fixed codes (`PROVIDER_ERROR`, `MALFORMED_RESPONSE`, `NOT_IMPLEMENTED`, `UNKNOWN_ERROR`) with `retryable`, `reconcilerId`, and developer-only `detail`; they never propagate as raw exceptions or partial Event lists
+- Grouping uses only deterministic, observable relationships — temporal overlap (strictly larger than a point), temporal adjacency (exact touching; "close" is not adjacent), and shared evidence. No heuristics, no semantic guessing, no scoring
+- A grouped Event's temporals are derived by an explicit rule: start = earliest contributing POI start, end = latest contributing POI end (null when no POI offers one). Single events inherit their POI's temporals exactly. Timestamps are never invented
+- A deterministic mock reconciler proves the boundary with no network, no AI, no randomness, and no heuristics
+- `withEvents(project, events)` attaches validated Events to a project through the established immutable update path
+
+Explicitly not in Stage 8: AI/LLM extraction or reconciliation, embeddings, vector search, virality/scoring/ranking, "best moment" selection, ClipSpec, clip editing, rendering, playback, timestamp repair, and transcript rewriting.
+
+---
+
 ClipSpec
 
 The future "ClipSpec" layer will act as the contract between analysis and video editing.
@@ -485,7 +515,7 @@ Application
 │   └── Canonical domain + provider-neutral extraction (Stage 7)
 │
 ├── Events
-│   └── Future
+│   └── Canonical domain + provider-neutral reconciliation (Stage 8)
 │
 └── Clips
     └── Future ClipSpec / Editor
@@ -500,7 +530,7 @@ ClipNexus uses an internal self-test/development test system to protect architec
 
 The self-test suite currently has:
 
-322 / 322 tests passing
+377 / 377 tests passing
 
 The test suite covers areas including:
 
@@ -656,7 +686,7 @@ Phase 3 — Evidence Analysis
 Phase 4 — Clip Intelligence
 
 - [x] POI extraction architecture (provider-neutral contract + deterministic mock provider; no AI extractor)
-- [ ] Event reconciliation
+- [x] Event reconciliation (canonical Event domain + provider-neutral reconciler contract + deterministic mock reconciler; no ClipSpec)
 - [ ] Context relationships
 - [ ] Media dependency tracking
 
@@ -1107,10 +1137,15 @@ vod-analyzer/
     │   ├── analyzer.js        Provider-agnostic analyzer over the extraction seam (Stage 3/4)
     │   ├── deterministic-extractor.js  Deterministic no-network test extractor (Stage 4)
     │   ├── pois.js            Canonical POI domain: frozen shape, temporal + evidence validation (Stage 7)
+    │   ├── events.js          Canonical Event domain: frozen shape, POI-reference + temporal validation (Stage 8)
     │   └── poi-providers/
     │       ├── provider.js    POI provider contract, curated extraction input, normalization boundary (Stage 7)
     │       ├── errors.js      Normalized POI extraction failure vocabulary (Stage 7)
     │       └── mock.js        Deterministic mock POI provider for self-tests (Stage 7)
+    │   └── event-reconcilers/
+    │       ├── reconciler.js  Event reconciler contract, curated reconciliation input, normalization boundary (Stage 8)
+    │       ├── errors.js      Normalized event-reconciliation failure vocabulary (Stage 8)
+    │       └── mock.js        Deterministic mock event reconciler for self-tests (Stage 8)
     └── ui/
         ├── dom.js             Safe DOM builders (textContent only)
         ├── sidebar.js         Section navigation
@@ -1130,7 +1165,7 @@ No install or build step. Open `index.html` through any local static server. On 
 Open the browser console (Acode: enable "Show Console Toggler" in Preview settings) and run:
 
 ```js
-await vodAnalyzer.runSelfTests()   // 322 checks, printed as a table (no network)
+await vodAnalyzer.runSelfTests()   // 377 checks, printed as a table (no network)
 vodAnalyzer.listProviders()        // registry descriptors
 vodAnalyzer.registerMockProviders() // optional UI preview: "Mock A (always fails)" + "Mock B (returns test data)"
 vodAnalyzer.inspectProject()    // the frozen Project (or null)

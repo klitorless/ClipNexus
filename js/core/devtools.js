@@ -34,6 +34,7 @@ import { addStage4Tests } from "./devtools-stage4-tests.js";
 import { addStage5Tests } from "./devtools-stage5-tests.js";
 import { addStage6Tests } from "./devtools-stage6-tests.js";
 import { addStage7Tests } from "./devtools-stage7-tests.js";
+import { addStage8Tests } from "./devtools-stage8-tests.js";
 import { createMockProvider } from "../transcript/providers/adapters/mock.js";
 
 function getStoredTranscript(appState) {
@@ -203,6 +204,12 @@ function buildTests(appState) {
     // domain, evidence traceability, extraction contract +
     // normalization boundary, deterministic mock provider.
     addStage7Tests(add);
+
+    // Stage 8: event reconciliation — canonical Event domain,
+    // deterministic grouping over observable relationships,
+    // reconciler contract + normalization boundary,
+    // deterministic mock reconciler.
+    addStage8Tests(add);
 
     return tests;
 }
