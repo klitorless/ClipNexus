@@ -9,7 +9,8 @@
 //   ├── transcript  TranscriptDocument    (js/transcript/model.js)
 //   ├── alignment   how transcript time maps to video time
 //   ├── analysis    reserved
-//   └── pois / events / clips  reserved
+//   ├── pois        normalized POIs (Stage 7: withPois)
+//   └── events / clips  reserved
 //
 // The transcript is stored by reference, unchanged. Video data
 // is NOT copied into the transcript or its segments. A future
@@ -20,7 +21,9 @@
 // ==========================================================
 
 import { createRandomId } from "./ids.js";
+import { AppError } from "./errors.js";
 import { deepFreeze } from "../transcript/model.js";
+import { assertPoi } from "../analysis/pois.js";
 import { createVideo, isSameVideo, isSameStartPosition, withStartPosition } from "../video/video-model.js";
 
 export const PROJECT_SCHEMA_VERSION = 1;
@@ -100,6 +103,17 @@ export function withTranscript(project, transcriptDocument) {
         transcript: transcriptDocument,
         alignment: createUnverifiedAlignment()
     });
+}
+
+// Stage 7: attach normalized POIs. Every entry must already be a
+// canonical, frozen POI (createPoi / extractPois output); the
+// project does not normalize provider output. The project stays
+// frozen; this returns a NEW project.
+export function withPois(project, pois) {
+    if (!Array.isArray(pois)) {
+        throw new AppError("invalid_pois", "withPois needs an array of POIs.", { pois });
+    }
+    return withChanges(project, { pois: pois.map(assertPoi) });
 }
 
 /**

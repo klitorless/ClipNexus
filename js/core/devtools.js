@@ -33,6 +33,7 @@ import { addAnalyzerIntegrationTests } from "./devtools-analyzer-tests.js";
 import { addStage4Tests } from "./devtools-stage4-tests.js";
 import { addStage5Tests } from "./devtools-stage5-tests.js";
 import { addStage6Tests } from "./devtools-stage6-tests.js";
+import { addStage7Tests } from "./devtools-stage7-tests.js";
 import { createMockProvider } from "../transcript/providers/adapters/mock.js";
 
 function getStoredTranscript(appState) {
@@ -197,6 +198,11 @@ function buildTests(appState) {
     // Stage 6: semantic temporal validation — deterministic
     // ordering/reset/overlap/end-before-start checks, observe-only.
     addStage6Tests(add);
+
+    // Stage 7: provider-neutral POI extraction — canonical POI
+    // domain, evidence traceability, extraction contract +
+    // normalization boundary, deterministic mock provider.
+    addStage7Tests(add);
 
     return tests;
 }

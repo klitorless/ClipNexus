@@ -29,7 +29,7 @@ Stage 3| ✅ Complete| Analysis contracts + extractor seam (no AI yet)
 Stage 4| ✅ Complete| Application integration: validation checks, pipeline chunking, JSON export, analysis tab with deterministic extractor
 Stage 5| ✅ Complete| Transcript format parsers: TXT, SRT, and VTT → canonical segments through the existing pipeline
 Stage 6| ✅ Complete| Semantic temporal validation: deterministic end-before-start, ordering/reset, and overlap checks over the canonical transcript (observe-only, no repairs)
-Stage 7| ⏳ Planned| POI extraction and event reconciliation
+Stage 7| ✅ Complete| Provider-neutral POI extraction: canonical POI domain, evidence contract, extraction provider contract + normalization boundary, deterministic mock provider (event reconciliation still planned)
 Stage 8| ⏳ Planned| ClipSpec generation
 Future| ⏳ Planned| ClipNexus editing/rendering engine
 
@@ -45,13 +45,13 @@ Each visual below is labeled with what it represents: **CURRENT** (implemented b
 
 ![What ClipNexus does today](docs/images/v1-what-works-today.webp)
 
-Acquire (file upload or Supadata) → Parse → Validate → Chunk → Export & Analyze. POIs, clips, and editing remain planned.
+Acquire (file upload or Supadata) → Parse → Validate → Chunk → Export & Analyze → provider-neutral POI extraction (canonical POI domain + deterministic mock provider; no AI extractor). Event reconciliation, clips, and editing remain planned.
 
 ### Roadmap: implemented vs. planned — ARCHITECTURE
 
 ![Roadmap: implemented vs planned](docs/images/v5-roadmap.webp)
 
-Teal stages are implemented and tested. Gray stages (POI extraction, event reconciliation, ClipSpec, editing engine) are planned and intentionally shown inactive.
+Teal stages are implemented and tested. Gray stages (event reconciliation, ClipSpec, editing engine) are planned and intentionally shown inactive.
 
 ### Canonical transcript model — ARCHITECTURE
 
@@ -69,7 +69,7 @@ The Stage 6 validator reports end-before-start, backward ordering (resets vs. lo
 
 ![Self-test console](docs/images/v2-selftest-console.webp)
 
-`await vodAnalyzer.runSelfTests()` runs 281 checks in the browser console with no network calls. No pytest, no CI — this is the real interface.
+`await vodAnalyzer.runSelfTests()` runs 322 checks in the browser console with no network calls. No pytest, no CI — this is the real interface.
 
 ### End-product vision — CONCEPTUAL / FUTURE
 
@@ -379,23 +379,27 @@ This separation allows the analysis system to evolve independently from transcri
 
 Points of Interest
 
-A POI represents an observable section of source material that may deserve further review.
+A POI represents an observable section of source material that may deserve further review. POIs are canonical, immutable, deeply frozen data — derived from a transcript, never a replacement for it.
 
-A future POI structure is expected to preserve information such as:
+The canonical POI shape (Stage 7, `js/analysis/pois.js`):
 
-- timestamp boundaries
-- transcript evidence
-- speaker information when available
-- topic
-- event type
-- context requirements
-- missing information
-- source limitations
-- relevant quotes
-- payoff/ending structure
-- media dependencies
+- `schemaVersion`, deterministic `id` (`poi-000000`, …), `transcriptId`
+- `type`: `highlight` | `question` | `speaker_change` | `other` (providers cannot invent categories)
+- `label`: human-readable, non-empty
+- `startSeconds` / `endSeconds`: finite numbers ≥ 0, or `null` (null = located by evidence, not by time). End without start is rejected; reversed ranges are rejected, never repaired; zero-length ranges are valid
+- `sourceRef: { transcriptId, segmentIds }`: every segment id must exist in the cited transcript — segment ids, not indexes, are the durable evidence identity
+- `provenance: { providerId, providerName, extractedAt, candidateIndex, providerRef? }`
 
-POIs are candidates for human review, not automatic publishing decisions.
+Extraction is provider-neutral (`js/analysis/poi-providers/`), mirroring the transcript provider architecture:
+
+- A provider receives only a frozen, curated input (`transcriptId` + segment views with canonical temporal pairs) — never the `TranscriptDocument` internals
+- It returns candidates (claims, not POIs) or a normalized failure
+- The normalization boundary validates every candidate against the authoritative transcript, drops all provider-specific fields, assigns deterministic ids, and stamps provenance from the provider descriptor — never from the response
+- Failures are normalized to fixed codes (`PROVIDER_ERROR`, `MALFORMED_RESPONSE`, `NOT_IMPLEMENTED`, `UNKNOWN_ERROR`) with `retryable`, `providerId`, and developer-only `detail`; they never propagate as raw exceptions or partial POI lists
+- A deterministic mock provider (`?` → question, `!` → highlight) proves the boundary with no network, no AI, and no randomness
+- `withPois(project, pois)` attaches validated POIs to a project through the established immutable update path
+
+POIs are candidates for human review, not automatic publishing decisions. Explicitly not in Stage 7: AI/LLM extraction, real vendor integrations, event extraction/reconciliation, automatic clip selection or ranking, "best moment" scoring, ClipSpec, clip editing, and video downloading/processing.
 
 ---
 
@@ -475,10 +479,10 @@ Application
 │       └── Adapters
 │
 ├── Analysis
-│   └── Future
+│   └── Deterministic extractor seam (Stages 3/4)
 │
 ├── POIs
-│   └── Future
+│   └── Canonical domain + provider-neutral extraction (Stage 7)
 │
 ├── Events
 │   └── Future
@@ -494,9 +498,9 @@ Testing
 
 ClipNexus uses an internal self-test/development test system to protect architectural contracts.
 
-The Stage 3 implementation currently has:
+The self-test suite currently has:
 
-281 / 281 tests passing
+322 / 322 tests passing
 
 The test suite covers areas including:
 
@@ -611,7 +615,8 @@ Current/future limitations include:
 - timestamps may be incomplete or unreliable
 - speaker attribution may be unavailable
 - AI analysis has not yet been integrated into the application pipeline
-- POI extraction is not yet implemented
+- AI POI extraction is not implemented (only the provider-neutral contract + deterministic mock provider exist)
+- event reconciliation is not yet implemented
 - ClipSpec is not yet implemented
 - video editing/rendering is not yet implemented
 
@@ -650,7 +655,7 @@ Phase 3 — Evidence Analysis
 
 Phase 4 — Clip Intelligence
 
-- [ ] POI extraction
+- [x] POI extraction architecture (provider-neutral contract + deterministic mock provider; no AI extractor)
 - [ ] Event reconciliation
 - [ ] Context relationships
 - [ ] Media dependency tracking
@@ -1097,6 +1102,15 @@ vod-analyzer/
     │   │   └── json.js        JSON parser (implemented in Stage 2B)
     │   ├── validator.js       Issue types, severity, issue factory, observational validator
     │   └── chunker.js         Chunk shape + defaults (600 s windows, 60 s overlap)
+    ├── analysis/
+    │   ├── contracts.js       Analysis request/result/evidence contracts (Stage 3)
+    │   ├── analyzer.js        Provider-agnostic analyzer over the extraction seam (Stage 3/4)
+    │   ├── deterministic-extractor.js  Deterministic no-network test extractor (Stage 4)
+    │   ├── pois.js            Canonical POI domain: frozen shape, temporal + evidence validation (Stage 7)
+    │   └── poi-providers/
+    │       ├── provider.js    POI provider contract, curated extraction input, normalization boundary (Stage 7)
+    │       ├── errors.js      Normalized POI extraction failure vocabulary (Stage 7)
+    │       └── mock.js        Deterministic mock POI provider for self-tests (Stage 7)
     └── ui/
         ├── dom.js             Safe DOM builders (textContent only)
         ├── sidebar.js         Section navigation
@@ -1116,7 +1130,7 @@ No install or build step. Open `index.html` through any local static server. On 
 Open the browser console (Acode: enable "Show Console Toggler" in Preview settings) and run:
 
 ```js
-await vodAnalyzer.runSelfTests()   // 281 checks, printed as a table (no network)
+await vodAnalyzer.runSelfTests()   // 322 checks, printed as a table (no network)
 vodAnalyzer.listProviders()        // registry descriptors
 vodAnalyzer.registerMockProviders() // optional UI preview: "Mock A (always fails)" + "Mock B (returns test data)"
 vodAnalyzer.inspectProject()    // the frozen Project (or null)
@@ -1293,9 +1307,9 @@ The AI layer will discover, describe, trace, and preserve uncertainty. It will n
 
 ## Not implemented on purpose (later stages)
 
-Additional real providers (youtube-transcript-api or others), automatic provider fallback, local speech-to-text, YouTube API / IFrame Player API, metadata fetching, embedded video player, playback controls, timestamp seeking, transcript/video sync, POI generation, event reconciliation, AI providers, clip generation or ranking, persistence (localStorage / IndexedDB / backend), database, authentication, cloud storage, payments, Discord integration, and platforms other than YouTube.
+Additional real providers (youtube-transcript-api or others), automatic provider fallback, local speech-to-text, YouTube API / IFrame Player API, metadata fetching, embedded video player, playback controls, timestamp seeking, transcript/video sync, AI POI providers, event reconciliation, AI providers, clip generation or ranking, persistence (localStorage / IndexedDB / backend), database, authentication, cloud storage, payments, Discord integration, and platforms other than YouTube.
 
-(Transcript parsing for TXT/SRT/VTT/JSON and semantic temporal validation are implemented — Stages 5 and 6 — and are documented above.)
+(Transcript parsing for TXT/SRT/VTT/JSON, semantic temporal validation, and the provider-neutral POI extraction architecture are implemented — Stages 5, 6, and 7 — and are documented above.)
 
 ## Future video + transcript workflow
 
