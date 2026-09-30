@@ -434,9 +434,32 @@
     outline: 2px solid var(--accent);
 }
 
+/* Candidate card header: decision tag + duration badge in one row. */
+.candidate-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+}
+
+.candidate-header .tag {
+    margin-bottom: 0;
+}
+
+/* Candidate card footer: seek action left, decision buttons right,
+   separated from the details by a hairline (V9 visual language). */
 .candidate-controls {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
-    margin-top: var(--space-3);
+    margin-top: var(--space-4);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--border);
+}
+
+.candidate-decisions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-left: auto;
 }

@@ -141,7 +141,17 @@ function createCandidateCard(clipSpec, index, project, handlers) {
     if (vm.isCurrent) card.classList.add("is-current");
 
     const [tagText, tagClass] = decisionTag(vm.decision);
-    card.append(createElement("span", tagClass, tagText));
+    const header = createElement("div", "candidate-header");
+    header.append(createElement("span", tagClass, tagText));
+    // Duration badge (V9 visual language): derived from canonical
+    // start/end seconds only; absent when either is unknown.
+    const { startSeconds, endSeconds } = clipSpec;
+    if (typeof startSeconds === "number" && typeof endSeconds === "number" &&
+        endSeconds >= startSeconds) {
+        header.append(createElement("span", "tag tag-muted",
+            `${Math.round(endSeconds - startSeconds)}s`));
+    }
+    card.append(header);
     card.append(createElement("h2", "card-title",
         `Candidate ${index + 1}${vm.isCurrent ? " — reviewing" : ""}`));
     card.append(createDetailList([
@@ -177,7 +187,14 @@ function createCandidateCard(clipSpec, index, project, handlers) {
     clearButton.title = "Clear this decision (back to unreviewed)";
     clearButton.addEventListener("click", () => handlers.onClearDecision(clipSpec.id));
 
-    controls.append(seekButton, keepButton, rejectButton, clearButton);
+    controls.append(seekButton);
+
+    // Decision buttons sit right-aligned in the card footer,
+    // matching the V9 visual language. DOM order is unchanged
+    // (seek first), so keyboard/screen-reader order is preserved.
+    const decisions = createElement("div", "candidate-decisions");
+    decisions.append(keepButton, rejectButton, clearButton);
+    controls.append(decisions);
     card.append(controls);
 
     if (!vm.canSeek) {
