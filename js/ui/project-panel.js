@@ -26,7 +26,7 @@ const stageLabels = {
 };
 
 const metadataStatusLabels = {
-    unknown: "Not requested (metadata loading not implemented yet)"
+    unknown: "Not available yet"
 };
 
 /**

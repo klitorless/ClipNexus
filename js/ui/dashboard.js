@@ -28,35 +28,24 @@ function createStatCard(label, value) {
 function createStatusCard() {
     const card = createElement("article", "card");
     card.append(
-        createElement("span", "tag", "Current stage"),
-        createElement("h2", "card-title", "Stage 4 — Application Integration"),
+        createElement("span", "tag", "About"),
+        createElement("h2", "card-title", "What VOD Analyzer does"),
         createElement(
             "p",
             "card-body",
-            "Available now: identify a YouTube video from its URL (including a start-time hint), " +
-            "import a transcript file as raw source evidence, or fetch the video's transcript from " +
-            "Supadata with your own API key on the Transcripts page. Transcripts are parsed into " +
-            "timestamped segments, structurally and temporally validated (ordering, resets, overlaps, " +
-            "end-before-start), chunked into deterministic windows, and " +
-            "exportable as JSON. The Analysis tab runs the analyzer with a deterministic question-pattern " +
-            "extractor, producing traceable evidence."
+            "Load a YouTube video, then add its transcript — upload a file, or fetch captions " +
+            "with your own Supadata API key on the Transcripts page. Transcripts are parsed into " +
+            "timestamped segments and validated: ordering, overlaps, and timing problems are " +
+            "reported instead of hidden. The Analysis tab surfaces question patterns with " +
+            "traceable evidence, and the Clip Queue pairs an embedded video player with clip " +
+            "candidates you can seek through, Keep, or Reject."
         ),
         createElement(
             "p",
             "card-body",
-            "Not built yet: video metadata and real AI extractors. " +
-            "Projects and API keys are forgotten when the page reloads."
-        ),
-        createElement(
-            "p",
-            "field-hint",
-            "Completed: Stage 1.5 — Transcript Data Foundation · Stage 1.6 — Project & Video Foundation · " +
-            "Stage 1.7 — Project & Video Foundation Hardening · Stage 2A — Transcript Acquisition Architecture · " +
-            "Stage 2B — First Real Transcript Provider · Stage 2C — Chunking & Export · " +
-            "Stage 3 — Analysis Contracts & Extraction Seam · Stage 4 — Application Integration · " +
-            "Stage 5 — Transcript Format Parsers · Stage 6 — Semantic Temporal Validation · " +
-            "Stage 7 — POI Extraction Architecture · Stage 8 — Event Reconciliation Architecture · " +
-            "Stage 9 — Canonical ClipSpec Architecture · Stage 10 — Embedded VOD Review & Clip Selection"
+            "Not built yet: automatic moment detection, AI editing, and publishing. The review " +
+            "queue fills in once candidates can be derived inside the app. Projects and API keys " +
+            "are forgotten when the page reloads."
         )
     );
     return card;
@@ -92,7 +81,7 @@ export function renderDashboard(mountElement, appState, handlers) {
     stats.append(
         createStatCard("Transcripts", transcript ? 1 : 0),
         createStatCard("POIs discovered", project ? project.pois.length : 0),
-        createStatCard("Clip candidates", project ? project.clips.length : 0)
+        createStatCard("Clip candidates", project ? project.clipSpecs.length : 0)
     );
 
     mountElement.replaceChildren(

@@ -467,18 +467,20 @@ export function addProviderTests(add) {
             hasNoUnsafeElements(mount);
     });
 
-    // Stage 4 update: the status card now describes the integrated
-    // application — validation, chunking, export, and the analysis
-    // tab with its deterministic extractor are available.
-    add("dashboard: status card describes Stage 10 honestly (review workflow complete)", () => {
+    // UI refinement: the status card is user-facing copy — what the
+    // app does and what it doesn't do yet. No internal stage names,
+    // no implementation jargon.
+    add("dashboard: status card describes the app honestly in user language", () => {
         const stubState = { get: (key) => (key === "ui" ? {} : null) };
         const mount = renderDetached((element) =>
             renderDashboard(element, stubState, { onVideoUrlSubmit: () => ({ ok: true, message: "" }) }));
         const text = mount.textContent;
-        return text.includes("Stage 4 — Application Integration") &&
-            text.includes("Completed:") && text.includes("Stage 3 — Analysis Contracts & Extraction Seam") &&
-            text.includes("your own API key") && text.includes("Analysis tab") &&
-            text.includes("Not built yet") && text.includes("real AI extractors") &&
-            text.includes("Stage 10 — Embedded VOD Review");
+        return text.includes("What VOD Analyzer does") &&
+            text.includes("your own Supadata API key") &&
+            text.includes("Clip Queue") && text.includes("Keep") &&
+            text.includes("Not built yet") &&
+            !text.includes("Stage 4 — Application Integration") &&
+            !text.includes("deterministic question-pattern extractor") &&
+            !text.includes("Completed:");
     });
 }

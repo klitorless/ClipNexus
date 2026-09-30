@@ -21,30 +21,34 @@
 <body>
     <div class="app-shell">
 
-        <!-- Top bar: brand + upload control -->
-        <header class="app-header">
-            <div class="brand">
-                <svg class="brand-mark" viewBox="0 0 24 24" width="24" height="24" fill="none"
-                     stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                     stroke-linejoin="round" aria-label="VOD Analyzer logo" role="img">
-                    <rect x="2.5" y="4.5" width="19" height="15" rx="2"></rect>
-                    <path d="M6 15l3-4 3 2.5 3-5 3 6.5"></path>
-                </svg>
-                <span class="brand-name">VOD ANALYZER</span>
-            </div>
+        <!-- Sticky top cluster on mobile (header + nav strip); the
+             wrapper dissolves on desktop via display: contents. -->
+        <div class="app-top">
+            <!-- Top bar: brand + upload control -->
+            <header class="app-header">
+                <div class="brand">
+                    <svg class="brand-mark" viewBox="0 0 24 24" width="24" height="24" fill="none"
+                         stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                         stroke-linejoin="round" aria-label="VOD Analyzer logo" role="img">
+                        <rect x="2.5" y="4.5" width="19" height="15" rx="2"></rect>
+                        <path d="M6 15l3-4 3 2.5 3-5 3 6.5"></path>
+                    </svg>
+                    <span class="brand-name">VOD ANALYZER</span>
+                </div>
 
-            <button id="upload-button" class="button button-primary" type="button">
-                Upload Transcript
-            </button>
+                <button id="upload-button" class="button button-primary" type="button">
+                    Upload Transcript
+                </button>
 
-            <!-- Hidden file input, opened by the Upload button (see js/app.js).
-                 Its "accept" list is set from js/transcript/formats.js. -->
-            <input id="transcript-file-input" class="visually-hidden" type="file"
-                   tabindex="-1" aria-hidden="true">
-        </header>
+                <!-- Hidden file input, opened by the Upload button (see js/app.js).
+                     Its "accept" list is set from js/transcript/formats.js. -->
+                <input id="transcript-file-input" class="visually-hidden" type="file"
+                       tabindex="-1" aria-hidden="true">
+            </header>
 
-        <!-- Sidebar navigation mount point (rendered by js/ui/sidebar.js) -->
-        <nav id="sidebar-mount" class="app-sidebar" aria-label="Sections"></nav>
+            <!-- Sidebar navigation mount point (rendered by js/ui/sidebar.js) -->
+            <nav id="sidebar-mount" class="app-sidebar" aria-label="Sections"></nav>
+        </div>
 
         <!-- Main content area -->
         <main class="app-main">

@@ -16,7 +16,7 @@ import { ACQUISITION_ERROR_CODES } from "../errors.js";
 
 export const provider = defineProvider({
     id: "youtube-transcript-api",
-    name: "youtube-transcript-api",
+    name: "YouTube captions",
     description: "Python caption library — needs a local helper or server, so it is not implemented in this browser-only app.",
     status: PROVIDER_STATUS.NOT_IMPLEMENTED,
     enabled: true,

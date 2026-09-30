@@ -8,12 +8,22 @@
 .app-shell {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto 1fr;
+    grid-template-rows: auto 1fr;
     grid-template-areas:
-        "header"
-        "sidebar"
+        "top"
         "main";
     min-height: 100vh;
+}
+
+/* Sticky top cluster on mobile: header + nav strip stay visible
+   while the page scrolls. Dissolves on desktop (display: contents)
+   so header/sidebar join the desktop grid directly. */
+.app-top {
+    grid-area: top;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--panel);
 }
 
 /* ---------- Header ---------- */
@@ -59,6 +69,9 @@
     border-bottom: 1px solid var(--border);
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    /* Fade the strip's trailing edge so the sideways scroll is discoverable. */
+    -webkit-mask-image: linear-gradient(to right, #000 88%, transparent 100%);
+    mask-image: linear-gradient(to right, #000 88%, transparent 100%);
 }
 
 /* ---------- Main ---------- */
@@ -92,10 +105,18 @@
             "sidebar main";
     }
 
+    /* The mobile sticky wrapper dissolves: header and sidebar join
+       the desktop grid as direct children. */
+    .app-top {
+        display: contents;
+    }
+
     .app-sidebar {
         border-bottom: none;
         border-right: 1px solid var(--border);
         overflow-x: visible;
+        -webkit-mask-image: none;
+        mask-image: none;
     }
 
     .app-main {
