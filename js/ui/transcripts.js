@@ -67,7 +67,9 @@ function createPipelineCard(transcript) {
 }
 
 // Display only: derived seconds → m:ss.mmm. Unknown values say so — never 0.
-function formatTimestamp(timestamp) {
+// Exported for reuse by other views (e.g. the Clip Queue); the
+// formatting contract is unchanged.
+export function formatTimestamp(timestamp) {
     if (timestamp.seconds === null) {
         return timestamp.status === TIMESTAMP_STATUS.MISSING ? "no time" : timestamp.status;
     }

@@ -470,7 +470,7 @@ export function addProviderTests(add) {
     // Stage 4 update: the status card now describes the integrated
     // application — validation, chunking, export, and the analysis
     // tab with its deterministic extractor are available.
-    add("dashboard: status card describes Stage 4 honestly (integration complete)", () => {
+    add("dashboard: status card describes Stage 10 honestly (review workflow complete)", () => {
         const stubState = { get: (key) => (key === "ui" ? {} : null) };
         const mount = renderDetached((element) =>
             renderDashboard(element, stubState, { onVideoUrlSubmit: () => ({ ok: true, message: "" }) }));
@@ -478,6 +478,7 @@ export function addProviderTests(add) {
         return text.includes("Stage 4 — Application Integration") &&
             text.includes("Completed:") && text.includes("Stage 3 — Analysis Contracts & Extraction Seam") &&
             text.includes("your own API key") && text.includes("Analysis tab") &&
-            text.includes("Not built yet") && text.includes("POI extraction");
+            text.includes("Not built yet") && text.includes("real AI extractors") &&
+            text.includes("Stage 10 — Embedded VOD Review");
     });
 }

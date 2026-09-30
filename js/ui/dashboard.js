@@ -44,8 +44,8 @@ function createStatusCard() {
         createElement(
             "p",
             "card-body",
-            "Not built yet: video metadata, an embedded " +
-            "player, real AI extractors, POI extraction, event reconciliation, ClipSpec, and clips. Projects and API keys are forgotten when the page reloads."
+            "Not built yet: video metadata and real AI extractors. " +
+            "Projects and API keys are forgotten when the page reloads."
         ),
         createElement(
             "p",
@@ -54,7 +54,9 @@ function createStatusCard() {
             "Stage 1.7 — Project & Video Foundation Hardening · Stage 2A — Transcript Acquisition Architecture · " +
             "Stage 2B — First Real Transcript Provider · Stage 2C — Chunking & Export · " +
             "Stage 3 — Analysis Contracts & Extraction Seam · Stage 4 — Application Integration · " +
-            "Stage 5 — Transcript Format Parsers · Stage 6 — Semantic Temporal Validation"
+            "Stage 5 — Transcript Format Parsers · Stage 6 — Semantic Temporal Validation · " +
+            "Stage 7 — POI Extraction Architecture · Stage 8 — Event Reconciliation Architecture · " +
+            "Stage 9 — Canonical ClipSpec Architecture · Stage 10 — Embedded VOD Review & Clip Selection"
         )
     );
     return card;

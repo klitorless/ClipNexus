@@ -4,10 +4,12 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="dark">
-    <!-- Security (Stage 2B): the only allowed external connection is the
-         transcript provider API. No third-party scripts, styles, or frames. -->
+    <!-- Security (Stage 2B; Stage 10): the only allowed external
+         connections are the transcript provider API and the
+         privacy-enhanced YouTube embed used by the Clip Queue
+         player. No third-party scripts, styles, or other frames. -->
     <meta http-equiv="Content-Security-Policy"
-          content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.supadata.ai; base-uri 'none'; form-action 'none'">
+          content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.supadata.ai; frame-src https://www.youtube-nocookie.com; base-uri 'none'; form-action 'none'">
     <meta name="referrer" content="no-referrer">
     <title>VOD Analyzer</title>
 

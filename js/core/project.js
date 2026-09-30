@@ -12,6 +12,9 @@
 //   ├── pois        normalized POIs (Stage 7: withPois)
 //   ├── events       reconciled Events (Stage 8: withEvents)
 //   ├── clipSpecs    derived ClipSpecs (Stage 9: withClipSpecs)
+//   ├── clipDecisions human KEEP/REJECT review decisions over
+//   │                ClipSpec candidates (Stage 10:
+//   │                withClipDecisions / setClipDecision)
 //   └── clips        reserved
 //
 // The transcript is stored by reference, unchanged. Video data
@@ -28,6 +31,10 @@ import { deepFreeze } from "../transcript/model.js";
 import { assertPoi } from "../analysis/pois.js";
 import { assertEvent } from "../analysis/events.js";
 import { assertClipSpec } from "../analysis/clip-spec.js";
+import {
+    assertClipDecision, createClipDecision, normalizeClipDecisions,
+    getKeptClipSpecIds
+} from "../analysis/clip-decisions.js";
 import { createVideo, isSameVideo, isSameStartPosition, withStartPosition } from "../video/video-model.js";
 
 export const PROJECT_SCHEMA_VERSION = 1;
@@ -94,6 +101,7 @@ export function createProject() {
         pois: [],                                 // reserved
         events: [],                               // reserved
         clipSpecs: [],                            // reserved
+        clipDecisions: [],                        // human review decisions (Stage 10)
         clips: []                                 // reserved
     });
 }
@@ -141,6 +149,50 @@ export function withClipSpecs(project, clipSpecs) {
         throw new AppError("invalid_clip_specs", "withClipSpecs needs an array of ClipSpecs.", { clipSpecs });
     }
     return withChanges(project, { clipSpecs: clipSpecs.map(assertClipSpec) });
+}
+
+// Stage 10: attach human review decisions over ClipSpec
+// candidates. Every entry must already be a canonical, frozen
+// ClipDecision (createClipDecision output); unknown ClipSpec ids
+// are rejected. This replaces the whole decision set — the
+// project stays frozen and a NEW project is returned.
+export function withClipDecisions(project, decisions) {
+    const knownIds = project.clipSpecs.map((spec) => spec.id);
+    return withChanges(project, { clipDecisions: normalizeClipDecisions(decisions, knownIds) });
+}
+
+// Stage 10: record one human decision ("keep" or "reject") for a
+// ClipSpec candidate. Unknown ClipSpec ids and invalid decision
+// values are rejected. Replaces any earlier decision for the
+// same candidate, so KEEP ↔ REJECT transitions are allowed. The
+// project stays frozen; this returns a NEW project.
+export function setClipDecision(project, clipSpecId, decision, { decidedAt } = {}) {
+    const knownIds = project.clipSpecs.map((spec) => spec.id);
+    if (!knownIds.includes(clipSpecId)) {
+        throw new AppError("unknown_clip_spec",
+            "Cannot record a decision for an unknown ClipSpec.", { clipSpecId });
+    }
+    const remaining = project.clipDecisions.filter((entry) => entry.clipSpecId !== clipSpecId);
+    remaining.push(createClipDecision({ clipSpecId, decision, decidedAt }));
+    return withChanges(project, { clipDecisions: remaining });
+}
+
+// Stage 10: reset one candidate to unreviewed by removing its
+// decision. When there is no decision to remove, the project is
+// returned unchanged (the same object — nothing happened).
+export function clearClipDecision(project, clipSpecId) {
+    const remaining = project.clipDecisions.filter((entry) => entry.clipSpecId !== clipSpecId);
+    if (remaining.length === project.clipDecisions.length) return project;
+    return withChanges(project, { clipDecisions: remaining });
+}
+
+// Stage 10: the kept ClipSpecs — the deterministic input future
+// clip-generation stages consume. Order follows
+// project.clipSpecs, so the same project always yields the same
+// list. The ClipSpecs themselves are untouched.
+export function getKeptClipSpecs(project) {
+    const keptIds = new Set(getKeptClipSpecIds(project.clipDecisions));
+    return project.clipSpecs.filter((spec) => keptIds.has(spec.id));
 }
 
 /**

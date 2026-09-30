@@ -36,6 +36,7 @@ import { addStage6Tests } from "./devtools-stage6-tests.js";
 import { addStage7Tests } from "./devtools-stage7-tests.js";
 import { addStage8Tests } from "./devtools-stage8-tests.js";
 import { addStage9Tests } from "./devtools-stage9-tests.js";
+import { addStage10Tests } from "./devtools-stage10-tests.js";
 import { createMockProvider } from "../transcript/providers/adapters/mock.js";
 
 function getStoredTranscript(appState) {
@@ -217,6 +218,13 @@ function buildTests(appState) {
     // provider-neutral derivation contract + normalization
     // boundary, deterministic mock deriver.
     addStage9Tests(add);
+
+    // Stage 10: embedded VOD review + clip candidate selection —
+    // canonical ClipDecision domain, immutable project decision
+    // ops, provider-neutral player controller + YouTube driver
+    // (readiness queueing, no external JS), the Clip Queue review
+    // view, and the revised narrow iframe security boundary.
+    addStage10Tests(add);
 
     return tests;
 }

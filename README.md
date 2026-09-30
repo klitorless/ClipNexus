@@ -32,6 +32,7 @@ Stage 6| ✅ Complete| Semantic temporal validation: deterministic end-before-st
 Stage 7| ✅ Complete| Provider-neutral POI extraction: canonical POI domain, evidence contract, extraction provider contract + normalization boundary, deterministic mock provider
 Stage 8| ✅ Complete| Event reconciliation: canonical Event domain, deterministic grouping over observable relationships, provider-neutral reconciler contract + normalization boundary, deterministic mock reconciler
 Stage 9| ✅ Complete| ClipSpec architecture: canonical ClipSpec domain (potential-clip specification, not a clip or a ranking), deterministic ids, event/POI reference validation, provider-neutral derivation contract + normalization boundary, deterministic mock deriver (no AI, no scoring)
+Stage 10| ✅ Complete| Embedded VOD review + clip candidate selection: canonical ClipDecision domain (human KEEP/REJECT over ClipSpec ids), provider-neutral embedded-player controller + YouTube driver (readiness queueing, no external JS), Clip Queue review view, narrow YouTube-nocookie iframe security boundary (no AI, no ranking, no clip generation)
 Future| ⏳ Planned| ClipNexus editing/rendering engine
 
 The current application already has a functioning canonical transcript pipeline and a real YouTube transcript provider.
@@ -462,6 +463,53 @@ This is a deliberate architectural boundary: a future editing engine will consum
 
 ---
 
+ClipDecision
+
+A ClipDecision is a canonical record of ONE human judgment about ONE ClipSpec candidate: `"keep"` (the user selected it) or `"reject"` (the user discarded it). The absence of a decision means "unreviewed" — there is no third stored value. This is the Stage 10 architectural rule:
+
+ClipSpec = "the analysis system identified this candidate."
+ClipDecision = "the human reviewed this candidate and chose KEEP or REJECT."
+
+The concepts are never collapsed. ClipSpecs stay immutable analysis artifacts; decisions live in a separate Project-level layer (`js/analysis/clip-decisions.js`) that references ClipSpec ids only and never copies or mutates the underlying evidence.
+
+The canonical ClipDecision shape (Stage 10):
+
+- `schemaVersion`, `clipSpecId`, `decision` (`"keep"` / `"reject"`), `decidedAt` (ISO-8601)
+- Unknown ClipSpec ids are rejected, never stored; invalid decision values are rejected; every object is deeply frozen
+
+Project integration follows the established immutable pattern:
+
+- `withClipDecisions(project, decisions)` — bulk attach, validated against the project's ClipSpec ids (duplicates collapse deterministically)
+- `setClipDecision(project, clipSpecId, decision)` — record one decision; KEEP ↔ REJECT transitions replace the earlier record
+- `clearClipDecision(project, clipSpecId)` — reset one candidate to unreviewed
+- `getKeptClipSpecs(project)` — the kept ClipSpecs in canonical `project.clipSpecs` order: the deterministic input future clip-generation stages will consume
+
+Explicitly not in Stage 10: AI/LLM analysis, new POI or Event extraction, ranking, scoring, virality prediction, automatic candidate selection, automatic KEEP/REJECT, clip generation, video cutting, FFmpeg, transcoding, rendering, downloading, social publishing, automatic end-of-clip stopping, transcript/video synchronization correction, or invented timestamp correction.
+
+---
+
+Embedded VOD review
+
+Stage 10 adds the first real human-review workflow: the Clip Queue view (`js/ui/clips.js`) shows an embedded VOD player above the ClipSpec candidate list. Clicking a candidate seeks the player to its `startSeconds`; the user watches the actual moment and marks it KEEP or REJECT. Analysis produces candidates; the human remains the final selector.
+
+Player architecture (`js/video/player/`), provider-neutral by design:
+
+- `controller.js` — the provider-neutral controller contract: create for one canonical video identity, `seek(seconds)`, `destroy()`. The controller is a live object (owns the iframe, the readiness handshake, and the seek queue) and never enters the immutable Project; the application coordinator (`js/app.js`) owns it
+- `drivers/youtube.js` — the YouTube driver: pure functions mapping a validated canonical identity to a privacy-enhanced embed (`https://www.youtube-nocookie.com`) and to the YouTube IFrame Player postMessage protocol. The YouTube JS API script is deliberately not loaded
+- Readiness is mandatory: seeks requested before the player signals ready are queued in order and executed once ready — a seek is never silently lost
+- A valid `startPosition` URL hint is honored once per video; no hint is ever invented
+- No usable video identity → no iframe; the controller is recreated cleanly when the project/video changes and destroyed when leaving the Clip Queue
+
+Security boundary (deliberately revised in Stage 10 — the previous "no iframe" invariant is replaced, not bypassed):
+
+- CSP gains exactly one narrow addition: `frame-src https://www.youtube-nocookie.com`. No arbitrary frame sources, scripts, media sources, or external domains
+- The iframe source is built only from a validated canonical YouTube identity and must pass a strict allowlist (`isExpectedEmbedUrl`) as defense in depth — arbitrary user URLs can never become an iframe source
+- Security tests verify the new boundary: the Clip Queue may contain only the intended player iframe, non-player views remain iframe-free, malformed identities create no player, and teardown removes the iframe cleanly
+
+Alignment honesty: project time alignment is still `unverified`, and Stage 10 treats that honestly — candidate timestamps are transcript times, assumed but not proven to match video time. No offset is applied and none is invented; a `null` start timestamp disables seeking with a plain explanation, and a `null` end timestamp still allows seeking to the start. The user's watch-and-judge step is itself the verification loop.
+
+---
+
 Future ClipNexus Editing Engine
 
 Video editing is intentionally separated from the current transcript system.
@@ -535,7 +583,7 @@ ClipNexus uses an internal self-test/development test system to protect architec
 
 The self-test suite currently has:
 
-419 / 419 tests passing
+469 / 469 tests passing
 
 The test suite covers areas including:
 
@@ -702,6 +750,15 @@ Phase 5 — Clip Specification
 - [x] Evidence references (eventId + preserved POI ids; full ClipSpec → Event → POI → segment chain)
 - [ ] Editing instructions
 - [ ] Editor handoff contract
+
+Phase 6 — Human Review
+
+- [x] ClipDecision domain (canonical human KEEP/REJECT layer over ClipSpec ids; unreviewed = no record; ClipSpecs untouched)
+- [x] Immutable decision operations (withClipDecisions / setClipDecision / clearClipDecision / getKeptClipSpecs on the Project)
+- [x] Provider-neutral embedded-player controller (readiness queueing; live objects never enter the Project)
+- [x] YouTube player driver (privacy-enhanced nocookie embed, postMessage seeking, no external JS)
+- [x] Clip Queue review view (embedded player + candidate cards + KEEP/REJECT + honest alignment status)
+- [x] Narrow iframe security boundary (CSP frame-src for youtube-nocookie.com only; strict embed-URL allowlist)
 
 Future — ClipNexus Editing Engine
 

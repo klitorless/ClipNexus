@@ -438,12 +438,18 @@ export function addSupadataTests(add) {
             mount.querySelectorAll("script, img, b").length === 0;
     });
 
-    add("security: CSP allows only the app and api.supadata.ai", () => {
+    // Stage 10: the Clip Queue embeds the VOD player from the
+    // privacy-enhanced YouTube host. frame-src allows exactly that
+    // host — nothing broader, no wildcards.
+    add("security: CSP allows only the app, api.supadata.ai, and the YouTube player frame", () => {
         const meta = document.querySelector("meta[http-equiv='Content-Security-Policy']");
         if (!meta) return false;
         const policy = meta.content;
-        const connect = policy.split(";").map((part) => part.trim()).find((part) => part.startsWith("connect-src"));
-        return connect === "connect-src 'self' https://api.supadata.ai" && policy.includes("script-src 'self'") &&
-            policy.includes("default-src 'none'");
+        const directive = (name) => policy.split(";").map((part) => part.trim())
+            .find((part) => part.startsWith(name));
+        return directive("connect-src") === "connect-src 'self' https://api.supadata.ai" &&
+            directive("frame-src") === "frame-src https://www.youtube-nocookie.com" &&
+            policy.includes("script-src 'self'") && policy.includes("default-src 'none'") &&
+            !policy.includes("*");
     });
 }

@@ -34,6 +34,13 @@ const pathPrefixes = ["embed", "shorts", "live", "v"];
 // YouTube video ids are 11 characters from [A-Za-z0-9_-].
 const videoIdPattern = /^[A-Za-z0-9_-]{11}$/;
 
+// Canonical video-id shape, shared with the embedded-player
+// driver so embed URLs are only ever built from validated
+// identities — never from arbitrary user input.
+export function isValidVideoId(candidate) {
+    return typeof candidate === "string" && videoIdPattern.test(candidate);
+}
+
 export function matchesHost(hostname) {
     return watchHosts.includes(hostname) || embedHosts.includes(hostname) || shortHosts.includes(hostname);
 }
@@ -72,7 +79,7 @@ export function extractVideoId(parsedUrl) {
             message: "This YouTube link does not point to a single video (e.g. a channel, playlist, or search page)."
         };
     }
-    if (!videoIdPattern.test(candidate)) {
+    if (!isValidVideoId(candidate)) {
         return {
             success: false,
             code: "invalid_video_id",

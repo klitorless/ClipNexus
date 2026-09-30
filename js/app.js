@@ -25,7 +25,8 @@ import { state } from "./core/state.js";
 import { routes, startRouter, navigate } from "./core/router.js";
 import { AppError, reportError } from "./core/errors.js";
 import { installDevtools } from "./core/devtools.js";
-import { createProject, withTranscript, applyVideoIdentity, finalizeVideoChange } from "./core/project.js";
+import { createProject, withTranscript, applyVideoIdentity, finalizeVideoChange,
+    setClipDecision, clearClipDecision } from "./core/project.js";
 import { resolveVideoUrl, getPlatformLabel } from "./video/video-resolver.js";
 import { getFormatForFilename, getAcceptAttribute, describeSupportedExtensions } from "./transcript/formats.js";
 import { buildTranscriptDocument, buildAcquiredTranscript } from "./transcript/pipeline.js";
@@ -47,6 +48,9 @@ import { createInfoCard } from "./ui/dom.js";
 import { createAnalyzer } from "./analysis/analyzer.js";
 import { createAnalysisRequest } from "./analysis/contracts.js";
 import { createQuestionExtractor } from "./analysis/deterministic-extractor.js";
+import { createPlayerController } from "./video/player/controller.js";
+import { youtubePlayerDriver } from "./video/player/drivers/youtube.js";
+import { renderClipsView } from "./ui/clips.js";
 
 const elements = {
     sidebar: document.getElementById("sidebar-mount"),
@@ -61,7 +65,6 @@ const elements = {
 const placeholderText = {
     pois: "Evidence-supported Points of Interest will appear here.",
     events: "Reconciled event arcs across transcript windows will appear here.",
-    clips: "Clip candidates prepared for human review will appear here.",
     settings: "Analysis window, overlap, and provider settings will live here."
 };
 
@@ -70,6 +73,11 @@ function renderPlaceholderView(mount, routeId) {
 }
 
 function renderView(routeId) {
+    // The embedded player lives only on the clips route: every
+    // other route must remain iframe-free (Stage 10 security
+    // boundary).
+    if (routeId !== "clips") teardownPlayer();
+
     const route = routes.find((item) => item.id === routeId);
     elements.pageTitle.textContent = route ? route.label : "Dashboard";
     document.title = `${elements.pageTitle.textContent} · VOD Analyzer`;
@@ -91,6 +99,7 @@ function renderView(routeId) {
         analysis: getAnalysis(),
         onAnalyze: handleAnalyze
     });
+    else if (routeId === "clips") renderClipsRoute();
     else renderPlaceholderView(elements.content, routeId);
 
     setActiveNavItem(elements.sidebar, routeId);
@@ -417,6 +426,160 @@ async function handleAnalyze({ scopeType, chunkId }) {
         setAnalysis({ status: "error", error: reportError(error, "Analysis") });
     }
     refreshAnalysisView();
+}
+
+// ---------- Embedded player + clip review (Stage 10) ----------
+//
+// The player controller is a LIVE object (it owns the iframe, the
+// readiness handshake, and the seek queue). It never enters the
+// frozen Project or serializable state — this coordinator owns it.
+// The iframe mount is a persistent element: re-renders re-attach
+// the SAME mount, so KEEP/REJECT decisions (which replace the
+// project and re-render) do not reload the video.
+const playerHost = {
+    controller: null,
+    platform: null,
+    videoId: null,
+    mount: null,
+    hintHonoredFor: null // "platform:videoId" the startPosition hint was honored for
+};
+
+function getPlayerMount() {
+    if (!playerHost.mount) {
+        playerHost.mount = document.createElement("div");
+        playerHost.mount.className = "player-mount";
+    }
+    return playerHost.mount;
+}
+
+function teardownPlayer() {
+    if (playerHost.controller) {
+        playerHost.controller.destroy();
+        playerHost.controller = null;
+    }
+    playerHost.platform = null;
+    playerHost.videoId = null;
+    playerHost.hintHonoredFor = null;
+}
+
+function describePlayerUnavailable(project) {
+    if (!project || !project.video) return "no-video";
+    if (!youtubePlayerDriver.canPlayVideo(project.video.identity)) return "unsupported-platform";
+    return null;
+}
+
+// Ensure the embedded player matches the current project. Creates
+// the controller for a playable video identity, recreates it when
+// the video changes, and never creates an iframe without a usable
+// canonical identity. Returns the controller or null.
+function syncPlayerForClips(project) {
+    const mount = getPlayerMount();
+    const video = project ? project.video : null;
+    const identity = video ? video.identity : null;
+    const matches = identity !== null && playerHost.platform === identity.platform &&
+        playerHost.videoId === identity.videoId;
+
+    if (!matches) teardownPlayer();
+
+    if (identity !== null && playerHost.controller === null) {
+        if (!youtubePlayerDriver.canPlayVideo(identity)) return null;
+        playerHost.controller = createPlayerController({
+            driver: youtubePlayerDriver,
+            identity,
+            mountElement: mount,
+            host: { document, window }
+        });
+        playerHost.platform = identity.platform;
+        playerHost.videoId = identity.videoId;
+        // Honor a valid start-position hint once per video. The
+        // controller queues the seek until the player is ready, so
+        // it is never silently lost. No hint is ever invented.
+        const hintSeconds = video.startPosition ? video.startPosition.seconds : null;
+        const hintKey = `${identity.platform}:${identity.videoId}`;
+        if (typeof hintSeconds === "number" && playerHost.hintHonoredFor !== hintKey) {
+            playerHost.hintHonoredFor = hintKey;
+            playerHost.controller.seek(hintSeconds);
+        }
+    }
+    return playerHost.controller;
+}
+
+// Current review target. Ephemeral UI state (like acquisition and
+// analysis status): selecting a candidate never mutates ClipSpecs.
+function getClipReview() {
+    const ui = state.get("ui");
+    return (ui && ui.clipReview) || { currentCandidateId: null };
+}
+
+function setClipReview(next) {
+    state.set("ui", { ...state.get("ui"), clipReview: next });
+}
+
+function refreshClipsView() {
+    if (state.get("route") === "clips") renderView("clips");
+}
+
+function renderClipsRoute() {
+    const project = state.get("project");
+    const controller = syncPlayerForClips(project);
+    renderClipsView(elements.content, project, {
+        playerMount: getPlayerMount(),
+        playerAvailable: controller !== null,
+        playerUnavailableReason: controller !== null ? null : describePlayerUnavailable(project),
+        currentCandidateId: getClipReview().currentCandidateId,
+        onSelectCandidate: handleSelectCandidate,
+        onKeep: handleKeepCandidate,
+        onReject: handleRejectCandidate,
+        onClearDecision: handleClearClipDecision
+    });
+}
+
+// Select the candidate as the current review target and seek the
+// embedded player to its startSeconds. Selection is recorded even
+// when seeking is unavailable; seeking never mutates the ClipSpec.
+function handleSelectCandidate(clipSpecId) {
+    const project = state.get("project");
+    if (!project) return;
+    const spec = project.clipSpecs.find((entry) => entry.id === clipSpecId);
+    if (!spec) return;
+    setClipReview({ currentCandidateId: clipSpecId });
+    const controller = playerHost.controller;
+    const transcriptOk = project.transcript !== null && spec.transcriptId === project.transcript.id;
+    if (controller !== null && transcriptOk && typeof spec.startSeconds === "number") {
+        try {
+            controller.seek(spec.startSeconds);
+        } catch (error) {
+            console.warn("[VOD Analyzer] Clip seek failed", error.code || error);
+        }
+    }
+    refreshClipsView();
+}
+
+function recordClipDecision(clipSpecId, decision) {
+    const project = state.get("project");
+    if (!project) return;
+    try {
+        // A new project triggers the subscriber re-render; the
+        // persistent player mount keeps the video loaded.
+        state.set("project", setClipDecision(project, clipSpecId, decision));
+    } catch (error) {
+        console.warn("[VOD Analyzer] Clip decision rejected", error.code || error);
+    }
+}
+
+function handleKeepCandidate(clipSpecId) {
+    recordClipDecision(clipSpecId, "keep");
+}
+
+function handleRejectCandidate(clipSpecId) {
+    recordClipDecision(clipSpecId, "reject");
+}
+
+function handleClearClipDecision(clipSpecId) {
+    const project = state.get("project");
+    if (!project) return;
+    const next = clearClipDecision(project, clipSpecId);
+    if (next !== project) state.set("project", next);
 }
 
 // ---------- Startup ----------
