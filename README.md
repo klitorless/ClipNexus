@@ -15,7 +15,7 @@ The goal is to build a reliable pipeline that preserves evidence, uncertainty, p
 
 Current Status
 
-Development stage: Stage 5 transcript format parser completion — TXT, SRT, and VTT files now parse into canonical TranscriptDocuments
+Development stage: post–Stage 10 UI refinement — user-facing dashboard copy, corrected clip-candidate stat, and refined mobile navigation (sticky header + nav strip, bottom active indicator, scroll fade)
 
 Stage| Status| Description
 Stage 1| ✅ Complete| Frontend shell and application structure
@@ -45,15 +45,15 @@ Each visual below is labeled with what it represents: **CURRENT** (implemented b
 
 ### What works today — CURRENT
 
-![What ClipNexus does today](docs/images/v1-what-works-today.webp)
+![What ClipNexus does today](docs/images/v9-what-works-today.webp)
 
-Acquire (file upload or Supadata) → Parse → Validate → Chunk → Export & Analyze → provider-neutral POI extraction (canonical POI domain + deterministic mock provider; no AI extractor). Event reconciliation, clips, and editing remain planned.
+Acquire (file upload or Supadata) → Parse → Validate → Chunk → Export & Analyze → provider-neutral POI extraction (canonical POI domain + deterministic mock provider; no AI extractor) → event reconciliation → ClipSpec derivation → the Clip Queue, where candidates are reviewed against the embedded player with seek, Keep, and Reject. AI editing and publishing remain planned.
 
 ### Roadmap: implemented vs. planned — ARCHITECTURE
 
-![Roadmap: implemented vs planned](docs/images/v5-roadmap.webp)
+![Roadmap: implemented vs planned](docs/images/v10-roadmap.webp)
 
-Teal stages are implemented and tested. Gray stages (event reconciliation, ClipSpec, editing engine) are planned and intentionally shown inactive.
+Teal stages are implemented and tested, through Stage 10 (embedded VOD review + clip selection) and the UI refinement pass. Gray stages (editing engine, AI extractors, publishing) are planned and intentionally shown inactive.
 
 ### Canonical transcript model — ARCHITECTURE
 
@@ -71,7 +71,13 @@ The Stage 6 validator reports end-before-start, backward ordering (resets vs. lo
 
 ![Self-test console](docs/images/v2-selftest-console.webp)
 
-`await vodAnalyzer.runSelfTests()` runs 419 checks in the browser console with no network calls. No pytest, no CI — this is the real interface.
+`await vodAnalyzer.runSelfTests()` runs 472 checks in the browser console with no network calls. No pytest, no CI — this is the real interface.
+
+### Mobile navigation refinement — CURRENT
+
+![Refined mobile navigation](docs/images/v11-mobile-ux.webp)
+
+Illustrative mock of the refined mobile experience: the header and nav strip stay pinned while scrolling, the active tab is marked with a bottom indicator instead of the desktop side bar, and the strip's trailing edge fades to show it scrolls sideways. (Body cards are representative; the navigation behavior is what's implemented.)
 
 ### End-product vision — CONCEPTUAL / FUTURE
 
@@ -1232,7 +1238,7 @@ No install or build step. Open `index.html` through any local static server. On 
 Open the browser console (Acode: enable "Show Console Toggler" in Preview settings) and run:
 
 ```js
-await vodAnalyzer.runSelfTests()   // 419 checks, printed as a table (no network)
+await vodAnalyzer.runSelfTests()   // 472 checks, printed as a table (no network)
 vodAnalyzer.listProviders()        // registry descriptors
 vodAnalyzer.registerMockProviders() // optional UI preview: "Mock A (always fails)" + "Mock B (returns test data)"
 vodAnalyzer.inspectProject()    // the frozen Project (or null)
