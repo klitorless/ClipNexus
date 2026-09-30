@@ -85,7 +85,11 @@ export function renderDashboard(mountElement, appState, handlers) {
     );
 
     mountElement.replaceChildren(
-        createVideoUrlForm({ onSubmit: handlers.onVideoUrlSubmit, notice: appState.get("ui").videoUrlNotice || null }),
+        createVideoUrlForm({
+            onSubmit: handlers.onVideoUrlSubmit,
+            notice: appState.get("ui").videoUrlNotice || null,
+            apiKey: handlers.youTubeApiKey || null
+        }),
         createProjectCard(project),
         stats,
         createStatusCard()

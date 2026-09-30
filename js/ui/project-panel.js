@@ -26,7 +26,11 @@ const stageLabels = {
 };
 
 const metadataStatusLabels = {
-    unknown: "Not available yet"
+    unknown: "Not available yet",
+    loading: "Loading…",
+    loaded: "Loaded",
+    unavailable: "Not available",
+    failed: "Could not load"
 };
 
 /**
@@ -36,8 +40,13 @@ const metadataStatusLabels = {
  *        {ok, message} or {ok, confirm:true, message, onConfirm, onCancel}.
  * @param {{ok:boolean, message:string}|null} [options.notice]
  *        Last result to show after a re-render.
+ * @param {object|null} [options.apiKey]
+ *        Optional YouTube Data API key controls:
+ *        { ready:boolean, onSave:(value)=>boolean, onClear:()=>void }.
+ *        The key is held in memory for the page session only and is
+ *        used solely to fetch video titles from YouTube.
  */
-export function createVideoUrlForm({ onSubmit, notice = null }) {
+export function createVideoUrlForm({ onSubmit, notice = null, apiKey = null }) {
     const form = createElement("form", "card url-form");
     form.noValidate = true;
 
@@ -103,11 +112,66 @@ export function createVideoUrlForm({ onSubmit, notice = null }) {
     if (notice) showNotice(notice);
 
     form.append(label, row, message, confirmPanel);
+    if (apiKey) form.append(createYouTubeKeyField(apiKey));
     form.addEventListener("submit", (event) => {
         event.preventDefault();
         showNotice(onSubmit(input.value));
     });
     return form;
+}
+
+// Optional YouTube Data API key. Same security posture as the
+// provider credential fields: the key is never rendered back into
+// the DOM, is held in memory for the page session only, and is
+// used solely to fetch video titles. (File import is a planned
+// later step; it will call the same onSave.)
+function createYouTubeKeyField({ ready, onSave, onClear }) {
+    const group = createElement("div", "field-group");
+    group.dataset.section = "youtube-api-key";
+
+    const label = createElement("label", "field-label", "YouTube Data API key (optional)");
+    label.htmlFor = "youtube-api-key-input";
+    group.append(label);
+
+    if (ready) {
+        const status = createElement("p", "credential-status", "Key entered for this page session.");
+        const row = createElement("div", "field-row");
+        const forget = createElement("button", "button", "Forget Key");
+        forget.type = "button";
+        forget.addEventListener("click", onClear);
+        row.append(forget);
+        group.append(status, row);
+    } else {
+        const row = createElement("div", "field-row");
+        const input = createElement("input", "text-input");
+        Object.assign(input, {
+            id: "youtube-api-key-input",
+            type: "password",
+            autocomplete: "off",
+            spellcheck: false,
+            placeholder: "Paste your YouTube Data API key"
+        });
+        input.setAttribute("autocapitalize", "off");
+        input.maxLength = 512;
+        const save = createElement("button", "button", "Use Key");
+        save.type = "button";
+        const message = createElement("p", "field-hint field-error");
+        message.setAttribute("role", "alert");
+        message.hidden = true;
+        save.addEventListener("click", () => {
+            const accepted = onSave(input.value);
+            input.value = "";                              // never keep it in the DOM
+            if (accepted) return;
+            message.textContent = "That does not look like an API key (no spaces, up to 512 characters).";
+            message.hidden = false;
+        });
+        row.append(input, save);
+        group.append(row, message);
+    }
+
+    group.append(createElement("p", "field-hint",
+        "Shows the video's title next to its video ID. Without a key, ClipNexus keeps using the video ID and everything else works the same."));
+    return group;
 }
 
 // "1:02:03" style display for a whole number of seconds.

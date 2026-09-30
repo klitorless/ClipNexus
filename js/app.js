@@ -26,8 +26,10 @@ import { routes, startRouter, navigate } from "./core/router.js";
 import { AppError, reportError } from "./core/errors.js";
 import { installDevtools } from "./core/devtools.js";
 import { createProject, withTranscript, applyVideoIdentity, finalizeVideoChange,
-    setClipDecision, clearClipDecision } from "./core/project.js";
+    setClipDecision, clearClipDecision, withVideoMetadata } from "./core/project.js";
 import { resolveVideoUrl, getPlatformLabel } from "./video/video-resolver.js";
+import { METADATA_STATUS } from "./video/video-model.js";
+import { fetchYouTubeTitle, METADATA_ERROR_CODES } from "./video/metadata-provider.js";
 import { getFormatForFilename, getAcceptAttribute, describeSupportedExtensions } from "./transcript/formats.js";
 import { buildTranscriptDocument, buildAcquiredTranscript } from "./transcript/pipeline.js";
 import { chunkDocument } from "./transcript/chunker.js";
@@ -83,7 +85,14 @@ function renderView(routeId) {
     document.title = `${elements.pageTitle.textContent} · VOD Analyzer`;
 
     const project = state.get("project");
-    if (routeId === "dashboard") renderDashboard(elements.content, state, { onVideoUrlSubmit: handleVideoUrlSubmit });
+    if (routeId === "dashboard") renderDashboard(elements.content, state, {
+        onVideoUrlSubmit: handleVideoUrlSubmit,
+        youTubeApiKey: {
+            ready: providerCredentials.has(YOUTUBE_API_KEY_ID),
+            onSave: handleYouTubeKeySave,
+            onClear: handleYouTubeKeyClear
+        }
+    });
     else if (routeId === "transcripts") renderTranscriptsView(elements.content, project, {
         acquisition: getAcquisition(),
         providers: transcriptProviders.list(),
@@ -142,6 +151,7 @@ function commitVideoPlan(videoPlan, confirmed, identity) {
     // A different project makes any earlier attempt irrelevant.
     if (!current || next.id !== current.id) setAcquisition(resetAttempt(getAcquisition()));
     if (next !== current) state.set("project", next);
+    if (next !== current) requestVideoTitle(next);
     return notice;
 }
 
@@ -280,6 +290,72 @@ function handleAcquisitionSelection(changes) {
 function handleCredentialChange(providerId, value) {
     if (value === null) { providerCredentials.clear(providerId); return true; }
     return providerCredentials.set(providerId, value);
+}
+
+// ---------- YouTube Data API key (video titles) ----------
+
+// Held in the same in-memory credential store as the provider keys:
+// page session only, never persisted, rendered, or logged. It is
+// sent only to www.googleapis.com, and only for video title metadata.
+// (A planned later step adds file import; it will call the same
+// save/clear functions below.)
+const YOUTUBE_API_KEY_ID = "youtube-data-api";
+
+function getYouTubeApiKey() {
+    return providerCredentials.read(YOUTUBE_API_KEY_ID);
+}
+
+function handleYouTubeKeySave(value) {
+    const accepted = providerCredentials.set(YOUTUBE_API_KEY_ID, value);
+    if (accepted) {
+        renderView(state.get("route"));          // show "entered for this page session"
+        requestVideoTitle(state.get("project")); // a video may already be linked
+    }
+    return accepted;
+}
+
+function handleYouTubeKeyClear() {
+    providerCredentials.clear(YOUTUBE_API_KEY_ID);
+    renderView(state.get("route"));
+}
+
+// Fetch the linked video's title when a key is available and no
+// metadata has been acquired yet. Fire-and-forget: the result is
+// applied only if the same video is still linked when it resolves.
+function requestVideoTitle(project) {
+    const video = project && project.video;
+    if (!video || video.identity.platform !== "youtube") return;
+    if (video.metadata.status !== METADATA_STATUS.UNKNOWN) return;
+    const apiKey = getYouTubeApiKey();
+    if (!apiKey) return;
+
+    const projectId = project.id;
+    const { platform, videoId } = video.identity;
+    state.set("project", withVideoMetadata(project, { status: METADATA_STATUS.LOADING }));
+    fetchYouTubeTitle(videoId, apiKey).then(
+        ({ title }) => applyTitleResult(projectId, platform, videoId, {
+            status: METADATA_STATUS.LOADED,
+            title,
+            provider: YOUTUBE_API_KEY_ID,
+            retrievedAt: new Date().toISOString()
+        }),
+        (error) => applyTitleResult(projectId, platform, videoId, {
+            status: error && error.code === METADATA_ERROR_CODES.NOT_FOUND
+                ? METADATA_STATUS.UNAVAILABLE
+                : METADATA_STATUS.FAILED
+        })
+    );
+}
+
+// Applies a title result only when the project still links the same
+// video; a replaced project makes the in-flight result irrelevant.
+function applyTitleResult(projectId, platform, videoId, patch) {
+    const current = state.get("project");
+    if (!current || current.id !== projectId) return;
+    const video = current.video;
+    if (!video || video.identity.platform !== platform || video.identity.videoId !== videoId) return;
+    if (video.metadata.status !== METADATA_STATUS.LOADING) return;
+    state.set("project", withVideoMetadata(current, patch));
 }
 
 // override.providerId: "Try Again" / "Try With <provider>" — an explicit

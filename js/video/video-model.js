@@ -103,6 +103,16 @@ export function withStartPosition(video, startPosition) {
     return Object.freeze({ ...video, startPosition });
 }
 
+// Metadata update: returns a new Video whose metadata merges the
+// patch over the current values. Identity and startPosition are kept.
+// The immutable update path: the old Video is never mutated.
+export function withMetadata(video, patch) {
+    return Object.freeze({
+        ...video,
+        metadata: Object.freeze({ ...video.metadata, ...patch })
+    });
+}
+
 export function isSameStartPosition(a, b) {
     if (a === null || b === null) return a === b;
     return a.raw === b.raw && a.seconds === b.seconds && a.status === b.status;

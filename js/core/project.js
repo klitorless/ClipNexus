@@ -35,7 +35,7 @@ import {
     assertClipDecision, createClipDecision, normalizeClipDecisions,
     getKeptClipSpecIds
 } from "../analysis/clip-decisions.js";
-import { createVideo, isSameVideo, isSameStartPosition, withStartPosition } from "../video/video-model.js";
+import { createVideo, isSameVideo, isSameStartPosition, withStartPosition, withMetadata } from "../video/video-model.js";
 
 export const PROJECT_SCHEMA_VERSION = 1;
 
@@ -116,6 +116,13 @@ export function withTranscript(project, transcriptDocument) {
         transcript: transcriptDocument,
         alignment: createUnverifiedAlignment()
     });
+}
+
+// Update the linked video's metadata through the immutable update
+// path. Used by the metadata provider after a title fetch resolves.
+export function withVideoMetadata(project, patch) {
+    if (!project || !project.video) return project;
+    return withChanges(project, { video: withMetadata(project.video, patch) });
 }
 
 // Stage 7: attach normalized POIs. Every entry must already be a

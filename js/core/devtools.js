@@ -37,6 +37,7 @@ import { addStage7Tests } from "./devtools-stage7-tests.js";
 import { addStage8Tests } from "./devtools-stage8-tests.js";
 import { addStage9Tests } from "./devtools-stage9-tests.js";
 import { addStage10Tests } from "./devtools-stage10-tests.js";
+import { addMetadataTests } from "./devtools-metadata-tests.js";
 import { createMockProvider } from "../transcript/providers/adapters/mock.js";
 
 function getStoredTranscript(appState) {
@@ -225,6 +226,10 @@ function buildTests(appState) {
     // (readiness queueing, no external JS), the Clip Queue review
     // view, and the revised narrow iframe security boundary.
     addStage10Tests(add);
+
+    // Video metadata: YouTube Data API title fetch (mocked), the
+    // immutable metadata update path, and the key's error hygiene.
+    addMetadataTests(add);
 
     return tests;
 }
