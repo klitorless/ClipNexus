@@ -35,6 +35,7 @@ import { addStage5Tests } from "./devtools-stage5-tests.js";
 import { addStage6Tests } from "./devtools-stage6-tests.js";
 import { addStage7Tests } from "./devtools-stage7-tests.js";
 import { addStage8Tests } from "./devtools-stage8-tests.js";
+import { addStage9Tests } from "./devtools-stage9-tests.js";
 import { createMockProvider } from "../transcript/providers/adapters/mock.js";
 
 function getStoredTranscript(appState) {
@@ -210,6 +211,12 @@ function buildTests(appState) {
     // reconciler contract + normalization boundary,
     // deterministic mock reconciler.
     addStage8Tests(add);
+
+    // Stage 9: canonical ClipSpec — canonical ClipSpec domain,
+    // deterministic ids, event/POI reference validation,
+    // provider-neutral derivation contract + normalization
+    // boundary, deterministic mock deriver.
+    addStage9Tests(add);
 
     return tests;
 }

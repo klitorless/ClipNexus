@@ -30,7 +30,8 @@ Stage 4| ✅ Complete| Application integration: validation checks, pipeline chun
 Stage 5| ✅ Complete| Transcript format parsers: TXT, SRT, and VTT → canonical segments through the existing pipeline
 Stage 6| ✅ Complete| Semantic temporal validation: deterministic end-before-start, ordering/reset, and overlap checks over the canonical transcript (observe-only, no repairs)
 Stage 7| ✅ Complete| Provider-neutral POI extraction: canonical POI domain, evidence contract, extraction provider contract + normalization boundary, deterministic mock provider
-Stage 8| ✅ Complete| Event reconciliation: canonical Event domain, deterministic grouping over observable relationships, provider-neutral reconciler contract + normalization boundary, deterministic mock reconciler (ClipSpec still planned)
+Stage 8| ✅ Complete| Event reconciliation: canonical Event domain, deterministic grouping over observable relationships, provider-neutral reconciler contract + normalization boundary, deterministic mock reconciler
+Stage 9| ✅ Complete| ClipSpec architecture: canonical ClipSpec domain (potential-clip specification, not a clip or a ranking), deterministic ids, event/POI reference validation, provider-neutral derivation contract + normalization boundary, deterministic mock deriver (no AI, no scoring)
 Future| ⏳ Planned| ClipNexus editing/rendering engine
 
 The current application already has a functioning canonical transcript pipeline and a real YouTube transcript provider.
@@ -69,7 +70,7 @@ The Stage 6 validator reports end-before-start, backward ordering (resets vs. lo
 
 ![Self-test console](docs/images/v2-selftest-console.webp)
 
-`await vodAnalyzer.runSelfTests()` runs 377 checks in the browser console with no network calls. No pytest, no CI — this is the real interface.
+`await vodAnalyzer.runSelfTests()` runs 419 checks in the browser console with no network calls. No pytest, no CI — this is the real interface.
 
 ### End-product vision — CONCEPTUAL / FUTURE
 
@@ -435,28 +436,29 @@ Explicitly not in Stage 8: AI/LLM extraction or reconciliation, embeddings, vect
 
 ClipSpec
 
-The future "ClipSpec" layer will act as the contract between analysis and video editing.
+A ClipSpec is a structured specification describing a POTENTIAL clip — what a clip derived from a validated Event IS, never a judgment of whether it is GOOD. It is not a video clip, not a ranking, and not a scoring system. ClipSpecs are canonical, immutable, deeply frozen data. The traceability chain stays:
 
-Conceptually:
+ClipSpec → Event → POI id(s) → POI.sourceRef → segment id(s) → TranscriptDocument
 
-POI / Event Analysis
-        │
-        ▼
-     ClipSpec
-        │
-        ├── Source video
-        ├── Start time
-        ├── End time
-        ├── Context requirements
-        ├── Transcript evidence
-        └── Editing metadata
-              │
-              ▼
-       Future Editor
+The canonical ClipSpec shape (Stage 9, `js/analysis/clip-spec.js`):
 
-The editing engine should consume "ClipSpec" objects without needing to understand the internal analysis pipeline.
+- `schemaVersion`, deterministic `id` (`clip-000000`, …), `transcriptId`, `eventId`
+- `startSeconds` / `endSeconds`: finite numbers ≥ 0, or `null` (null = located by Event evidence, not by time). Explicit start/end semantics: start ≤ end. End without start is rejected; reversed ranges are rejected, never repaired; zero-length ranges are valid; missing timestamps stay unknown, never zero
+- `poiIds`: source POI ids preserved from the describing Event — never copied POIs, never transcript text, never array indexes. Every id must be a member of the Event's `poiIds`; invented or missing references are rejected, never silently dropped or repaired
+- `derivation: { deriverId, deriverName, derivedAt, candidateIndex, deriverRef? }` — stamped from the deriver descriptor, never from the deriver's response
 
-This is a deliberate architectural boundary.
+Derivation is provider-neutral (`js/analysis/clip-spec-derivers/`), mirroring the POI and Event architectures:
+
+- A deriver receives only a frozen, curated input (`transcriptId` + Event views with canonical ids, types, temporal boundaries, and contributing POI ids) — never mutable Project internals, DOM state, or credentials
+- It returns candidate ClipSpecs (claims, not ClipSpecs) or a normalized failure
+- The normalization boundary resolves every `eventId` against the canonical Event set, verifies every `poiId` is preserved from that Event, drops all deriver-specific fields (scores, rankings, model output), assigns deterministic ids, and stamps derivation from the deriver descriptor
+- Failures are normalized to fixed codes (`PROVIDER_ERROR`, `MALFORMED_RESPONSE`, `NOT_IMPLEMENTED`, `UNKNOWN_ERROR`) with `retryable`, `deriverId`, and developer-only `detail`; they never propagate as raw exceptions or partial ClipSpec lists
+- The deterministic mock deriver describes exactly the Event it was derived from: it inherits the Event's temporals unchanged and preserves its POI ids. No ranking, no scoring, no heuristics, no semantic guessing — no timestamps are ever invented
+- `withClipSpecs(project, clipSpecs)` attaches validated ClipSpecs to a project through the established immutable update path
+
+Explicitly not in Stage 9: AI clip selection, ranking, scoring, virality detection, semantic quality judgments, video cutting, FFmpeg, export/rendering, timeline editing UI, automatic clip downloading, LLM calls, and network APIs. Stage 9 is architecture and contracts only.
+
+This is a deliberate architectural boundary: a future editing engine will consume ClipSpec objects without needing to understand the internal analysis pipeline.
 
 ---
 
@@ -517,8 +519,11 @@ Application
 ├── Events
 │   └── Canonical domain + provider-neutral reconciliation (Stage 8)
 │
+├── ClipSpecs
+│   └── Canonical domain + provider-neutral derivation (Stage 9)
+│
 └── Clips
-    └── Future ClipSpec / Editor
+    └── Future Editor
 
 The architecture is intentionally modular so individual systems can be replaced without rebuilding the entire application.
 
@@ -530,7 +535,7 @@ ClipNexus uses an internal self-test/development test system to protect architec
 
 The self-test suite currently has:
 
-377 / 377 tests passing
+419 / 419 tests passing
 
 The test suite covers areas including:
 
@@ -686,15 +691,15 @@ Phase 3 — Evidence Analysis
 Phase 4 — Clip Intelligence
 
 - [x] POI extraction architecture (provider-neutral contract + deterministic mock provider; no AI extractor)
-- [x] Event reconciliation (canonical Event domain + provider-neutral reconciler contract + deterministic mock reconciler; no ClipSpec)
+- [x] Event reconciliation (canonical Event domain + provider-neutral reconciler contract + deterministic mock reconciler; no ranking, no scoring)
 - [ ] Context relationships
 - [ ] Media dependency tracking
 
 Phase 5 — Clip Specification
 
-- [ ] ClipSpec schema
-- [ ] Clip boundaries
-- [ ] Evidence references
+- [x] ClipSpec schema (canonical ClipSpec domain + deterministic ids; specification only, not a clip or a ranking)
+- [x] Clip boundaries (explicit start/end semantics, null/unknown preserved, malformed rejected — never repaired)
+- [x] Evidence references (eventId + preserved POI ids; full ClipSpec → Event → POI → segment chain)
 - [ ] Editing instructions
 - [ ] Editor handoff contract
 
@@ -1138,6 +1143,7 @@ vod-analyzer/
     │   ├── deterministic-extractor.js  Deterministic no-network test extractor (Stage 4)
     │   ├── pois.js            Canonical POI domain: frozen shape, temporal + evidence validation (Stage 7)
     │   ├── events.js          Canonical Event domain: frozen shape, POI-reference + temporal validation (Stage 8)
+    │   ├── clip-spec.js       Canonical ClipSpec domain: frozen shape, event/POI-reference + temporal validation (Stage 9)
     │   └── poi-providers/
     │       ├── provider.js    POI provider contract, curated extraction input, normalization boundary (Stage 7)
     │       ├── errors.js      Normalized POI extraction failure vocabulary (Stage 7)
@@ -1146,6 +1152,10 @@ vod-analyzer/
     │       ├── reconciler.js  Event reconciler contract, curated reconciliation input, normalization boundary (Stage 8)
     │       ├── errors.js      Normalized event-reconciliation failure vocabulary (Stage 8)
     │       └── mock.js        Deterministic mock event reconciler for self-tests (Stage 8)
+    │   └── clip-spec-derivers/
+    │       ├── deriver.js     ClipSpec deriver contract, curated derivation input, normalization boundary (Stage 9)
+    │       ├── errors.js      Normalized ClipSpec-derivation failure vocabulary (Stage 9)
+    │       └── mock.js        Deterministic mock ClipSpec deriver for self-tests (Stage 9)
     └── ui/
         ├── dom.js             Safe DOM builders (textContent only)
         ├── sidebar.js         Section navigation
@@ -1165,7 +1175,7 @@ No install or build step. Open `index.html` through any local static server. On 
 Open the browser console (Acode: enable "Show Console Toggler" in Preview settings) and run:
 
 ```js
-await vodAnalyzer.runSelfTests()   // 377 checks, printed as a table (no network)
+await vodAnalyzer.runSelfTests()   // 419 checks, printed as a table (no network)
 vodAnalyzer.listProviders()        // registry descriptors
 vodAnalyzer.registerMockProviders() // optional UI preview: "Mock A (always fails)" + "Mock B (returns test data)"
 vodAnalyzer.inspectProject()    // the frozen Project (or null)

@@ -10,7 +10,8 @@
 //   ├── alignment   how transcript time maps to video time
 //   ├── analysis    reserved
 //   ├── pois        normalized POIs (Stage 7: withPois)
-//   └── events       reconciled Events (Stage 8: withEvents)
+//   ├── events       reconciled Events (Stage 8: withEvents)
+//   ├── clipSpecs    derived ClipSpecs (Stage 9: withClipSpecs)
 //   └── clips        reserved
 //
 // The transcript is stored by reference, unchanged. Video data
@@ -26,6 +27,7 @@ import { AppError } from "./errors.js";
 import { deepFreeze } from "../transcript/model.js";
 import { assertPoi } from "../analysis/pois.js";
 import { assertEvent } from "../analysis/events.js";
+import { assertClipSpec } from "../analysis/clip-spec.js";
 import { createVideo, isSameVideo, isSameStartPosition, withStartPosition } from "../video/video-model.js";
 
 export const PROJECT_SCHEMA_VERSION = 1;
@@ -91,6 +93,7 @@ export function createProject() {
         analysis: { status: "not_implemented" },  // reserved
         pois: [],                                 // reserved
         events: [],                               // reserved
+        clipSpecs: [],                            // reserved
         clips: []                                 // reserved
     });
 }
@@ -127,6 +130,17 @@ export function withEvents(project, events) {
         throw new AppError("invalid_events", "withEvents needs an array of Events.", { events });
     }
     return withChanges(project, { events: events.map(assertEvent) });
+}
+
+// Stage 9: attach derived ClipSpecs. Every entry must already be
+// a canonical, frozen ClipSpec (createClipSpec / deriveClipSpecs
+// output); the project does not normalize deriver output.
+// The project stays frozen; this returns a NEW project.
+export function withClipSpecs(project, clipSpecs) {
+    if (!Array.isArray(clipSpecs)) {
+        throw new AppError("invalid_clip_specs", "withClipSpecs needs an array of ClipSpecs.", { clipSpecs });
+    }
+    return withChanges(project, { clipSpecs: clipSpecs.map(assertClipSpec) });
 }
 
 /**
