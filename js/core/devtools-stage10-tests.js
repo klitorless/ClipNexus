@@ -31,7 +31,7 @@ import { createClipSpec } from "../analysis/clip-spec.js";
 import {
     youtubePlayerDriver, canPlayVideo, buildEmbedUrl, isExpectedEmbedUrl,
     createSeekCommand, createListenCommand, isPlayerReadyMessage,
-    YOUTUBE_MESSAGE_ORIGIN
+    YOUTUBE_MESSAGE_ORIGIN, IFRAME_REFERRER_POLICY
 } from "../video/player/drivers/youtube.js";
 import { createPlayerController } from "../video/player/controller.js";
 import {
@@ -314,6 +314,15 @@ export function addStage10Tests(add) {
         buildEmbedUrl(youtubeIdentity) ===
             `https://www.youtube-nocookie.com/embed/${VIDEO_ID}?enablejsapi=1&rel=0`);
 
+    add("player: youtube driver declares a strict-origin iframe referrer policy", () =>
+        // YouTube error 153: the player refuses to configure itself
+        // when the embed request carries no usable Referer. The app's
+        // page-level policy is no-referrer, so the driver requires the
+        // controller to override it on the player iframe — origin only,
+        // never page paths.
+        IFRAME_REFERRER_POLICY === "strict-origin-when-cross-origin" &&
+        youtubePlayerDriver.iframeReferrerPolicy === IFRAME_REFERRER_POLICY);
+
     add("player: malformed identities are not playable", () => {
         const bad = [
             null, undefined, {},
@@ -394,6 +403,25 @@ export function addStage10Tests(add) {
         return parts.mount.children.length === 1 &&
             parts.mount.children[0].src === buildEmbedUrl(youtubeIdentity) &&
             isExpectedEmbedUrl(parts.mount.children[0].src) === true;
+    });
+
+    add("player: created iframe carries the driver's referrer policy", () => {
+        const parts = createFakeHost();
+        makeController(parts);
+        return parts.mount.children[0].attributes["referrerpolicy"] ===
+            "strict-origin-when-cross-origin";
+    });
+
+    add("player: iframe referrer policy is optional for other drivers", () => {
+        const parts = createFakeHost();
+        const driver = { ...youtubePlayerDriver };
+        delete driver.iframeReferrerPolicy;
+        createPlayerController({
+            driver, identity: youtubeIdentity,
+            mountElement: parts.mount, host: parts.host
+        });
+        return parts.mount.children.length === 1 &&
+            !("referrerpolicy" in parts.mount.children[0].attributes);
     });
 
     add("player: seek before ready is queued, never lost", () => {

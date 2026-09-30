@@ -29,6 +29,15 @@ import { isValidVideoId } from "../../platforms/youtube.js";
 export const YOUTUBE_NOCOOKIE_HOST = "www.youtube-nocookie.com";
 export const YOUTUBE_MESSAGE_ORIGIN = "https://www.youtube-nocookie.com";
 
+// The iframe request must carry a usable Referer so YouTube can
+// identify the embedding page: without one the player refuses to
+// configure itself and renders "Video player configuration error"
+// (YouTube error 153). The application's page-level referrer policy
+// is no-referrer, so the controller sets this attribute on the
+// player iframe to override it — scoped to the player only, and
+// sending just the origin (never page paths) to the embed host.
+export const IFRAME_REFERRER_POLICY = "strict-origin-when-cross-origin";
+
 export const playerPlatform = "youtube";
 
 /**
@@ -100,6 +109,7 @@ export function isPlayerReadyMessage(data) {
 export const youtubePlayerDriver = Object.freeze({
     platform: playerPlatform,
     messageOrigin: YOUTUBE_MESSAGE_ORIGIN,
+    iframeReferrerPolicy: IFRAME_REFERRER_POLICY,
     canPlayVideo,
     buildEmbedUrl,
     isExpectedEmbedUrl,

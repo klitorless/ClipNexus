@@ -21,6 +21,14 @@
 //                fetchImpl/sleep/now injection used by the
 //                transcript provider adapters)
 //
+// The driver may also declare an optional iframeReferrerPolicy
+// string. When present, the controller sets it as the iframe's
+// referrerpolicy attribute. This exists because some providers
+// (YouTube: error 153) require a usable Referer to identify the
+// embedding page, while the application keeps a strict
+// page-level referrer policy — the attribute overrides it for
+// the player iframe only.
+//
 // Readiness is mandatory: seeks requested before the embedded
 // player signals ready are QUEUED in order and executed once
 // the player is ready. A seek is never silently lost.
@@ -94,6 +102,9 @@ export function createPlayerController({ driver, identity, mountElement, host })
         frame.setAttribute("allow",
             "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture");
         frame.setAttribute("allowfullscreen", "");
+        if (typeof driver.iframeReferrerPolicy === "string" && driver.iframeReferrerPolicy !== "") {
+            frame.setAttribute("referrerpolicy", driver.iframeReferrerPolicy);
+        }
     }
     mountElement.replaceChildren(frame);
 
