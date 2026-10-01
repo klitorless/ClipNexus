@@ -37,8 +37,11 @@ const metadataStatusLabels = {
  *        The key is held in memory for the page session only and is
  *        used solely to fetch video titles from YouTube.
  */
-export function createVideoUrlForm({ onSubmit, notice = null, apiKey = null }) {
-    const form = createElement("form", "card url-form");
+export function createVideoUrlForm({ onSubmit, notice = null, apiKey = null, bare = false }) {
+    // bare: render without the card chrome so a caller can wrap the
+    // form in its own card (e.g. the Dashboard "Create Project"
+    // intake card).
+    const form = createElement("form", bare ? "url-form" : "card url-form");
     form.noValidate = true;
 
     const label = createElement("label", "field-label", "Video URL");

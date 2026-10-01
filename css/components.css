@@ -472,6 +472,17 @@
     font-size: var(--text-sm);
 }
 
+/* ---------- Dashboard: Create Project intake + VOD preview ---------- */
+
+/* The VOD preview is the visual anchor of a loaded Dashboard: a
+   restrained accent wash keeps it prominent without dominating
+   the page. The player itself stays fluid (16:9) via the shared
+   .player-mount / .player-frame rules. */
+.preview-player {
+    border-color: var(--accent-soft);
+    box-shadow: var(--elevation-1), 0 0 0 1px var(--accent-soft);
+}
+
 /* ---------- Stage 10: embedded VOD player + clip review ---------- */
 
 .player-mount {

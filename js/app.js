@@ -50,7 +50,7 @@ import { createInfoCard } from "./ui/dom.js";
 import { createAnalyzer } from "./analysis/analyzer.js";
 import { createAnalysisRequest } from "./analysis/contracts.js";
 import { createQuestionExtractor } from "./analysis/deterministic-extractor.js";
-import { createPlayerController } from "./video/player/controller.js";
+import { createPlayerCoordinator } from "./video/player/coordinator.js";
 import { youtubePlayerDriver } from "./video/player/drivers/youtube.js";
 import { renderClipsView } from "./ui/clips.js";
 
@@ -89,24 +89,38 @@ function renderPlaceholderView(mount, routeId) {
 }
 
 function renderView(routeId) {
-    // The embedded player lives only on the clips route: every
-    // other route must remain iframe-free (Stage 10 security
-    // boundary).
-    if (routeId !== "clips") teardownPlayer();
+    // Each embedded player lives only on its own route: leaving a
+    // route tears its player down so no hidden iframe keeps running
+    // behind other views. Every route other than dashboard and
+    // clips remains iframe-free (Stage 10 security boundary,
+    // extended to the dashboard preview).
+    if (routeId !== "clips") {
+        clipsPlayer.teardown();
+        clipsHintHonoredFor = null;
+    }
+    if (routeId !== "dashboard") dashboardPlayer.teardown();
 
     const route = routes.find((item) => item.id === routeId);
     elements.pageTitle.textContent = route ? route.label : "Dashboard";
     document.title = `${elements.pageTitle.textContent} · ClipNexus`;
 
     const project = state.get("project");
-    if (routeId === "dashboard") renderDashboard(elements.content, state, {
-        onVideoUrlSubmit: handleVideoUrlSubmit,
-        youTubeApiKey: {
-            ready: providerCredentials.has(YOUTUBE_API_KEY_ID),
-            onSave: handleYouTubeKeySave,
-            onClear: handleYouTubeKeyClear
-        }
-    });
+    if (routeId === "dashboard") {
+        const dashboardController = syncPlayerForDashboard(project);
+        renderDashboard(elements.content, state, {
+            onVideoUrlSubmit: handleVideoUrlSubmit,
+            youTubeApiKey: {
+                ready: providerCredentials.has(YOUTUBE_API_KEY_ID),
+                onSave: handleYouTubeKeySave,
+                onClear: handleYouTubeKeyClear
+            },
+            player: {
+                mount: dashboardPlayer.getMount(playerRuntimeHost()),
+                available: dashboardController !== null,
+                unavailableReason: dashboardController !== null ? null : describePlayerUnavailable(project)
+            }
+        });
+    }
     else if (routeId === "transcripts") renderTranscriptsView(elements.content, project, {
         acquisition: getAcquisition(),
         providers: transcriptProviders.list(),
@@ -518,38 +532,26 @@ async function handleAnalyze({ scopeType, chunkId }) {
     refreshAnalysisView();
 }
 
-// ---------- Embedded player + clip review (Stage 10) ----------
+// ---------- Embedded players (Stage 10 + Dashboard preview) ----------
 //
 // The player controller is a LIVE object (it owns the iframe, the
 // readiness handshake, and the seek queue). It never enters the
-// frozen Project or serializable state — this coordinator owns it.
-// The iframe mount is a persistent element: re-renders re-attach
-// the SAME mount, so KEEP/REJECT decisions (which replace the
-// project and re-render) do not reload the video.
-const playerHost = {
-    controller: null,
-    platform: null,
-    videoId: null,
-    mount: null,
-    hintHonoredFor: null // "platform:videoId" the startPosition hint was honored for
-};
+// frozen Project or serializable state — the coordinators own it.
+// One coordinator per player-showing route (Clips review, Dashboard
+// preview); both share the provider-neutral coordinator mechanism
+// in js/video/player/coordinator.js instead of duplicating player
+// logic. The iframe mount is a persistent element: re-renders
+// re-attach the SAME mount, so KEEP/REJECT decisions (which replace
+// the project and re-render) do not reload the video.
+const clipsPlayer = createPlayerCoordinator({ driver: youtubePlayerDriver });
+const dashboardPlayer = createPlayerCoordinator({ driver: youtubePlayerDriver });
 
-function getPlayerMount() {
-    if (!playerHost.mount) {
-        playerHost.mount = document.createElement("div");
-        playerHost.mount.className = "player-mount";
-    }
-    return playerHost.mount;
-}
+// "platform:videoId" the clips start-position hint was honored for.
+// Reset whenever the clips player is torn down.
+let clipsHintHonoredFor = null;
 
-function teardownPlayer() {
-    if (playerHost.controller) {
-        playerHost.controller.destroy();
-        playerHost.controller = null;
-    }
-    playerHost.platform = null;
-    playerHost.videoId = null;
-    playerHost.hintHonoredFor = null;
+function playerRuntimeHost() {
+    return { document, window };
 }
 
 function describePlayerUnavailable(project) {
@@ -558,40 +560,34 @@ function describePlayerUnavailable(project) {
     return null;
 }
 
-// Ensure the embedded player matches the current project. Creates
-// the controller for a playable video identity, recreates it when
-// the video changes, and never creates an iframe without a usable
-// canonical identity. Returns the controller or null.
+// Ensure the Clips embedded player matches the current project.
+// Shared sync plus the Clips-only start-position hint: a valid
+// hint is honored once per video. The controller queues the seek
+// until the player is ready, so it is never silently lost. No hint
+// is ever invented.
 function syncPlayerForClips(project) {
-    const mount = getPlayerMount();
     const video = project ? project.video : null;
     const identity = video ? video.identity : null;
-    const matches = identity !== null && playerHost.platform === identity.platform &&
-        playerHost.videoId === identity.videoId;
-
-    if (!matches) teardownPlayer();
-
-    if (identity !== null && playerHost.controller === null) {
-        if (!youtubePlayerDriver.canPlayVideo(identity)) return null;
-        playerHost.controller = createPlayerController({
-            driver: youtubePlayerDriver,
-            identity,
-            mountElement: mount,
-            host: { document, window }
-        });
-        playerHost.platform = identity.platform;
-        playerHost.videoId = identity.videoId;
-        // Honor a valid start-position hint once per video. The
-        // controller queues the seek until the player is ready, so
-        // it is never silently lost. No hint is ever invented.
+    const controller = clipsPlayer.sync(identity, playerRuntimeHost());
+    if (controller !== null && video) {
         const hintSeconds = video.startPosition ? video.startPosition.seconds : null;
         const hintKey = `${identity.platform}:${identity.videoId}`;
-        if (typeof hintSeconds === "number" && playerHost.hintHonoredFor !== hintKey) {
-            playerHost.hintHonoredFor = hintKey;
-            playerHost.controller.seek(hintSeconds);
+        if (typeof hintSeconds === "number" && clipsHintHonoredFor !== hintKey) {
+            clipsHintHonoredFor = hintKey;
+            controller.seek(hintSeconds);
         }
     }
-    return playerHost.controller;
+    return controller;
+}
+
+// Ensure the Dashboard preview player matches the current project.
+// Same coordinator mechanism as Clips, but a plain preview: no
+// candidate seeking, no start-position hint — it simply loads the
+// resolved VOD.
+function syncPlayerForDashboard(project) {
+    const video = project ? project.video : null;
+    const identity = video ? video.identity : null;
+    return dashboardPlayer.sync(identity, playerRuntimeHost());
 }
 
 // Current review target. Ephemeral UI state (like acquisition and
@@ -613,7 +609,7 @@ function renderClipsRoute() {
     const project = state.get("project");
     const controller = syncPlayerForClips(project);
     renderClipsView(elements.content, project, {
-        playerMount: getPlayerMount(),
+        playerMount: clipsPlayer.getMount(playerRuntimeHost()),
         playerAvailable: controller !== null,
         playerUnavailableReason: controller !== null ? null : describePlayerUnavailable(project),
         currentCandidateId: getClipReview().currentCandidateId,
@@ -633,7 +629,7 @@ function handleSelectCandidate(clipSpecId) {
     const spec = project.clipSpecs.find((entry) => entry.id === clipSpecId);
     if (!spec) return;
     setClipReview({ currentCandidateId: clipSpecId });
-    const controller = playerHost.controller;
+    const controller = clipsPlayer.controller;
     const transcriptOk = project.transcript !== null && spec.transcriptId === project.transcript.id;
     if (controller !== null && transcriptOk && typeof spec.startSeconds === "number") {
         try {

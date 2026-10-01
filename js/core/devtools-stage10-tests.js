@@ -34,6 +34,7 @@ import {
     YOUTUBE_MESSAGE_ORIGIN, IFRAME_REFERRER_POLICY
 } from "../video/player/drivers/youtube.js";
 import { createPlayerController } from "../video/player/controller.js";
+import { createPlayerCoordinator } from "../video/player/coordinator.js";
 import {
     renderClipsView, describeCandidate, describeSeekDisabledReason
 } from "../ui/clips.js";
@@ -48,6 +49,20 @@ const youtubeIdentity = {
     videoId: VIDEO_ID,
     canonicalUrl: `https://www.youtube.com/watch?v=${VIDEO_ID}`,
     url: `https://www.youtube.com/watch?v=${VIDEO_ID}`
+};
+
+const otherYoutubeIdentity = {
+    platform: "youtube",
+    videoId: "9bZkp7q19f0", // 11 chars, canonical YouTube shape
+    canonicalUrl: "https://www.youtube.com/watch?v=9bZkp7q19f0",
+    url: "https://www.youtube.com/watch?v=9bZkp7q19f0"
+};
+
+const vimeoIdentity = {
+    platform: "vimeo",
+    videoId: "123456",
+    canonicalUrl: "https://vimeo.com/123456",
+    url: "https://vimeo.com/123456"
 };
 
 function clipSpec(overrides = {}) {
@@ -130,6 +145,38 @@ function readyEvent(frame) {
         source: frame.contentWindow,
         data: JSON.stringify({ event: "onReady" })
     };
+}
+
+// Fake host for coordinator tests: like createFakeHost, but the
+// coordinator also creates its persistent "div" mount via
+// document.createElement("div").
+function createCoordinatorHost() {
+    const frame = createFakeFrame();
+    frame.tag = "iframe";
+    const messageListeners = [];
+    const mount = {
+        tag: "div",
+        className: "",
+        children: [],
+        replaceChildren(...items) { this.children = items; }
+    };
+    const host = {
+        document: {
+            createElement(tag) {
+                if (tag === "iframe") return frame;
+                if (tag === "div") return mount;
+                throw new Error(`unexpected element: ${tag}`);
+            }
+        },
+        window: {
+            addEventListener(type, fn) { if (type === "message") messageListeners.push(fn); },
+            removeEventListener(type, fn) {
+                const index = messageListeners.indexOf(fn);
+                if (index >= 0) messageListeners.splice(index, 1);
+            }
+        }
+    };
+    return { host, frame, mount, messageListeners };
 }
 
 function makeController(hostParts, identity = youtubeIdentity) {
@@ -732,6 +779,82 @@ export function addStage10Tests(add) {
         if (parts.mount.children.length !== 1) return false;
         controller.destroy();
         return parts.mount.children.length === 0 && controller.destroyed === true;
+    });
+
+    // ---------- Player coordinator (shared Dashboard preview + Clips review) ----------
+
+    add("coordinator: sync with null identity creates nothing", () => {
+        const parts = createCoordinatorHost();
+        const coordinator = createPlayerCoordinator({ driver: youtubePlayerDriver });
+        return coordinator.sync(null, parts.host) === null &&
+            coordinator.controller === null &&
+            parts.host.document.createElement("div").children.length === 0;
+    });
+
+    add("coordinator: sync creates exactly one controller for a playable identity", () => {
+        const parts = createCoordinatorHost();
+        const coordinator = createPlayerCoordinator({ driver: youtubePlayerDriver });
+        const controller = coordinator.sync(youtubeIdentity, parts.host);
+        const mount = coordinator.getMount(parts.host);
+        return controller !== null &&
+            coordinator.controller === controller &&
+            mount.children.length === 1 &&
+            mount.children[0].tag === "iframe" &&
+            isExpectedEmbedUrl(mount.children[0].src) === true;
+    });
+
+    add("coordinator: repeated sync with the same identity reuses the controller", () => {
+        const parts = createCoordinatorHost();
+        const coordinator = createPlayerCoordinator({ driver: youtubePlayerDriver });
+        const first = coordinator.sync(youtubeIdentity, parts.host);
+        const second = coordinator.sync(youtubeIdentity, parts.host);
+        const mount = coordinator.getMount(parts.host);
+        return first === second && first.destroyed === false && mount.children.length === 1;
+    });
+
+    add("coordinator: identity change destroys the old controller and creates a new one", () => {
+        const parts = createCoordinatorHost();
+        const coordinator = createPlayerCoordinator({ driver: youtubePlayerDriver });
+        const first = coordinator.sync(youtubeIdentity, parts.host);
+        const second = coordinator.sync(otherYoutubeIdentity, parts.host);
+        const mount = coordinator.getMount(parts.host);
+        return first !== second && first.destroyed === true && second.destroyed === false &&
+            mount.children.length === 1; // no duplicate iframes
+    });
+
+    add("coordinator: unplayable identity tears down and returns null", () => {
+        const parts = createCoordinatorHost();
+        const coordinator = createPlayerCoordinator({ driver: youtubePlayerDriver });
+        const first = coordinator.sync(youtubeIdentity, parts.host);
+        const result = coordinator.sync(vimeoIdentity, parts.host);
+        const mount = coordinator.getMount(parts.host);
+        return result === null && coordinator.controller === null &&
+            first.destroyed === true && mount.children.length === 0;
+    });
+
+    add("coordinator: teardown removes the iframe and listeners", () => {
+        const parts = createCoordinatorHost();
+        const coordinator = createPlayerCoordinator({ driver: youtubePlayerDriver });
+        coordinator.sync(youtubeIdentity, parts.host);
+        coordinator.teardown();
+        const mount = coordinator.getMount(parts.host);
+        return coordinator.controller === null &&
+            mount.children.length === 0 &&
+            parts.messageListeners.length === 0;
+    });
+
+    add("coordinator: two coordinators are fully independent", () => {
+        const dashboard = createCoordinatorHost();
+        const clips = createCoordinatorHost();
+        const preview = createPlayerCoordinator({ driver: youtubePlayerDriver });
+        const review = createPlayerCoordinator({ driver: youtubePlayerDriver });
+        const previewController = preview.sync(youtubeIdentity, dashboard.host);
+        const reviewController = review.sync(otherYoutubeIdentity, clips.host);
+        preview.teardown();
+        return previewController !== null && reviewController !== null &&
+            previewController !== reviewController &&
+            preview.controller === null &&
+            review.controller === reviewController && reviewController.destroyed === false;
     });
 
     add("security: transcript mismatch is reported, never guessed past", () => {

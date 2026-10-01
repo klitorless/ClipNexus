@@ -13,6 +13,7 @@ import {
 } from "./project.js";
 import { renderTranscriptsView } from "../ui/transcripts.js";
 import { renderDashboard } from "../ui/dashboard.js";
+import { buildEmbedUrl, isExpectedEmbedUrl } from "../video/player/drivers/youtube.js";
 import { resolveVideoUrl } from "../video/video-resolver.js";
 import { METADATA_STATUS } from "../video/video-model.js";
 import { parseTranscript } from "../transcript/parser.js";
@@ -334,5 +335,82 @@ export function addStage17Tests(add) {
             text.includes("Load a video") &&
             !text.includes("Stage 1.7 — Project & Video Foundation") &&
             !text.includes("Stage 1 — Application Shell");
+    });
+
+    // ---------- Dashboard: Create Project intake + VOD preview ----------
+
+    add("dashboard: intake card frames the URL form as Create Project", () => {
+        const stubState = { get: (key) => (key === "ui" ? {} : null) };
+        const mount = renderDetached((element) =>
+            renderDashboard(element, stubState, { onVideoUrlSubmit: () => ({ ok: true, message: "" }) }));
+        const intake = mount.querySelector("[data-section='create-project']");
+        return intake !== null &&
+            intake.textContent.includes("Create Project") &&
+            intake.textContent.includes("Load a VOD to begin") &&
+            intake.querySelector("form") !== null;
+    });
+
+    add("dashboard: no video renders no preview player and no iframe", () => {
+        const stubState = { get: (key) => (key === "ui" ? {} : null) };
+        const mount = renderDetached((element) =>
+            renderDashboard(element, stubState, { onVideoUrlSubmit: () => ({ ok: true, message: "" }) }));
+        return mount.querySelector("[data-section='preview-player']") === null &&
+            mount.querySelectorAll("iframe").length === 0;
+    });
+
+    add("dashboard: loaded video mounts the coordinator-provided player", () => {
+        const project = planFor(null, canonicalUrl).project;
+        const stubState = { get: (key) => (key === "project" ? project : {}) };
+        // The mount is a live element owned by the application
+        // coordinator: it carries the player iframe the coordinator
+        // built. The view must re-attach it, never create one.
+        const playerMount = document.createElement("div");
+        playerMount.className = "player-mount";
+        const frame = document.createElement("iframe");
+        frame.src = buildEmbedUrl(project.video.identity);
+        playerMount.append(frame);
+        const mount = renderDetached((element) =>
+            renderDashboard(element, stubState, {
+                onVideoUrlSubmit: () => ({ ok: true, message: "" }),
+                player: { mount: playerMount, available: true, unavailableReason: null }
+            }));
+        const preview = mount.querySelector("[data-section='preview-player']");
+        const frames = mount.querySelectorAll("iframe");
+        return preview !== null &&
+            preview.textContent.includes("VOD preview") &&
+            preview.contains(playerMount) &&
+            frames.length === 1 &&
+            isExpectedEmbedUrl(frames[0].src) === true &&
+            frames[0].src.includes("youtube-nocookie.com");
+    });
+
+    add("dashboard: view never creates iframes or builds embed URLs itself", () => {
+        const project = planFor(null, canonicalUrl).project;
+        const stubState = { get: (key) => (key === "project" ? project : {}) };
+        // An empty mount with the player marked available: the only
+        // iframe that could appear is one the view created itself.
+        const playerMount = document.createElement("div");
+        playerMount.className = "player-mount";
+        const mount = renderDetached((element) =>
+            renderDashboard(element, stubState, {
+                onVideoUrlSubmit: () => ({ ok: true, message: "" }),
+                player: { mount: playerMount, available: true, unavailableReason: null }
+            }));
+        return mount.querySelector("[data-section='preview-player']") !== null &&
+            mount.querySelectorAll("iframe").length === 0;
+    });
+
+    add("dashboard: unsupported platform shows the honest message and no iframe", () => {
+        const project = planFor(null, canonicalUrl).project;
+        const stubState = { get: (key) => (key === "project" ? project : {}) };
+        const mount = renderDetached((element) =>
+            renderDashboard(element, stubState, {
+                onVideoUrlSubmit: () => ({ ok: true, message: "" }),
+                player: { mount: null, available: false, unavailableReason: "unsupported-platform" }
+            }));
+        const preview = mount.querySelector("[data-section='preview-player']");
+        return preview !== null &&
+            preview.textContent.includes("not supported") &&
+            mount.querySelectorAll("iframe").length === 0;
     });
 }

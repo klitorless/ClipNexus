@@ -1,13 +1,16 @@
 // ==========================================================
 // dashboard.js
-// Responsibility: build the Dashboard view — the control
-// center. Video URL form (primary action), project context
-// hero, pipeline status, contextual next actions, the honest
-// "about" card, and the loaded transcript summary.
+// Responsibility: build the Dashboard view — the Create Project
+// intake screen. Video URL form (primary action), the VOD preview
+// player (appears once a video resolves), project context hero,
+// pipeline status, contextual next actions, the honest "about"
+// card, and the loaded transcript summary.
 //
 // Pure DOM building — receives data + callbacks, returns
 // elements. Every status shown comes from real application
-// state; nothing is invented.
+// state; nothing is invented. The preview player mount is a live
+// element owned by the application player coordinator; this view
+// re-attaches it but never creates iframes or builds embed URLs.
 // ==========================================================
 
 import { createElement, createDetailList } from "./dom.js";
@@ -181,26 +184,74 @@ function createNextActionsCard(project) {
     return card;
 }
 
+// The Create Project intake card: the primary "load a VOD"
+// action, framed as project creation. The form stays usable after
+// a video loads so a new URL can replace the current project
+// (with the existing replace confirmation).
+function createIntakeCard(formOptions) {
+    const card = createElement("article", "card");
+    card.dataset.section = "create-project";
+    card.append(
+        createElement("span", "tag", "Create Project"),
+        createElement("h2", "card-title", "Load a VOD to begin"),
+        createVideoUrlForm({ ...formOptions, bare: true })
+    );
+    return card;
+}
+
+// The Dashboard VOD preview. Rendered only when a video identity
+// is loaded. The mount is a live element owned by the application
+// player coordinator; re-attaching the same element across
+// re-renders preserves the loaded video. This view never creates
+// iframes and never builds embed URLs — the player appears only
+// after a video successfully resolves, using the same
+// Stage 10 player/controller architecture as the Clips review.
+function createPreviewPlayerCard(player) {
+    const card = createElement("article", "card preview-player");
+    card.dataset.section = "preview-player";
+    card.append(
+        createElement("span", "tag", "Now previewing"),
+        createElement("h2", "card-title", "VOD preview")
+    );
+    if (player.available && player.mount) {
+        card.append(player.mount);
+    } else {
+        const message = player.unavailableReason === "unsupported-platform"
+            ? "Embedded preview is not supported for this video platform yet."
+            : "Load a video above to preview it here.";
+        card.append(createElement("p", "card-body", message));
+    }
+    return card;
+}
+
 /**
  * @param {HTMLElement} mountElement
  * @param {object} appState
- * @param {{onVideoUrlSubmit: (url:string) => {ok:boolean, message:string}}} handlers
+ * @param {{onVideoUrlSubmit: (url:string) => {ok:boolean, message:string}, player?: {mount: (HTMLElement|null), available: boolean, unavailableReason: (string|null)}}} handlers
  */
 export function renderDashboard(mountElement, appState, handlers) {
     const project = appState.get("project");
     const transcript = project ? project.transcript : null;
+    const player = handlers.player || { mount: null, available: false, unavailableReason: "no-video" };
+    const hasVideo = project !== null && project !== undefined && project.video != null;
 
-    mountElement.replaceChildren(
-        createVideoUrlForm({
+    const children = [
+        createIntakeCard({
             onSubmit: handlers.onVideoUrlSubmit,
             notice: appState.get("ui").videoUrlNotice || null,
             apiKey: handlers.youTubeApiKey || null
         }),
+        // The preview player is a VOD preview only — "here is the
+        // VOD I just loaded". No player appears without a loaded
+        // video; the pipeline cards below keep reporting real
+        // (possibly empty) state.
+        ...(hasVideo ? [createPreviewPlayerCard(player)] : []),
         createProjectCard(project),
         createPipelineCard(project),
         createNextActionsCard(project),
         createStatusCard()
-    );
+    ];
+    mountElement.replaceChildren(...children);
 
     if (transcript) {
         mountElement.append(createTranscriptSummaryCard(transcript));
