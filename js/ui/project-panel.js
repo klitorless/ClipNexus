@@ -12,18 +12,9 @@
 // ==========================================================
 
 import { createElement, createDetailList } from "./dom.js";
-import { getProjectStage, PROJECT_STAGE } from "../core/project.js";
 import { getPlatformLabel } from "../video/video-resolver.js";
 
 const notLoaded = "Not loaded";
-
-const stageLabels = {
-    [PROJECT_STAGE.NONE]: "No project",
-    [PROJECT_STAGE.CREATED]: "Project created",
-    [PROJECT_STAGE.VIDEO_IDENTIFIED]: "Video identified",
-    [PROJECT_STAGE.TRANSCRIPT_ATTACHED]: "Transcript attached (no video)",
-    [PROJECT_STAGE.VIDEO_AND_TRANSCRIPT]: "Video identified · Transcript attached"
-};
 
 const metadataStatusLabels = {
     unknown: "Not available yet",
@@ -195,35 +186,61 @@ function describeVideoRows(video) {
     if (!video) return [["Video", notLoaded]];
     const { identity, metadata } = video;
     return [
-        ["Platform", getPlatformLabel(identity.platform)],
         ["Video ID", identity.videoId],
         ["Canonical URL", identity.canonicalUrl],
         ["Start hint", describeStartPosition(video.startPosition)],
-        ["Title", metadata.title ?? notLoaded],
-        ["Duration", metadata.durationSeconds ?? notLoaded],
+        ["Duration", metadata.durationSeconds === null ? "Not available yet" : formatClock(metadata.durationSeconds)],
         ["Metadata", metadataStatusLabels[metadata.status] || metadata.status]
     ];
 }
 
-function describeTranscriptRow(transcript) {
-    if (!transcript) return ["Transcript", notLoaded];
-    return ["Transcript", transcript.source.filename];
+function metadataTagClass(status) {
+    if (status === "loaded") return "tag tag-success";
+    if (status === "failed") return "tag tag-danger";
+    return "tag tag-muted";
 }
 
 export function createProjectCard(project) {
     const card = createElement("article", "card");
-    card.append(createElement("h2", "card-title", "Project"));
+    card.dataset.section = "project";
 
-    if (!project) {
-        card.append(createElement("p", "card-body", "No video loaded. Enter a video URL to start a project."));
+    if (!project || !project.video) {
+        card.append(createElement("h2", "card-title", "Project"));
+        card.append(createElement("p", "card-body", "No video loaded. Enter a video URL above to start a project."));
         return card;
     }
 
-    card.append(createDetailList([
-        ["Status", stageLabels[getProjectStage(project)]],
-        ...describeVideoRows(project.video),
-        describeTranscriptRow(project.transcript)
-    ]));
+    const { identity, metadata } = project.video;
+    const hero = createElement("div", "video-hero");
+
+    const top = createElement("div", "video-hero-top");
+    const icon = createElement("span", "video-hero-icon");
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = "▶";
+    const titleBlock = createElement("div", "");
+    titleBlock.append(
+        createElement("h2", "video-hero-title", metadata.title ?? "Untitled video"),
+        createElement("p", "video-hero-meta",
+            `${getPlatformLabel(identity.platform)} · ${identity.videoId}`)
+    );
+    top.append(icon, titleBlock);
+
+    const tags = createElement("div", "video-hero-tags");
+    tags.append(
+        createElement("span", "tag", getPlatformLabel(identity.platform)),
+        createElement("span", metadataTagClass(metadata.status),
+            metadata.status === "loaded" ? "Title loaded"
+            : metadata.status === "loading" ? "Loading title…"
+            : metadata.status === "failed" ? "Title unavailable"
+            : "Title not loaded")
+    );
+    if (project.transcript) {
+        tags.append(createElement("span", "tag tag-success", "Transcript attached"));
+    }
+
+    hero.append(top, tags);
+    card.append(hero);
+    card.append(createDetailList(describeVideoRows(project.video)));
     return card;
 }
 

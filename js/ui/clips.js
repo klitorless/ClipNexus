@@ -108,6 +108,29 @@ function createPlayerCard(playerMount, playerAvailable, playerUnavailableReason)
     return card;
 }
 
+function createReviewIntroCard() {
+    const card = createElement("article", "card");
+    card.dataset.section = "review-intro";
+    card.append(createElement("span", "tag", "Human review"));
+    card.append(createElement("h2", "card-title", "You decide what gets kept"));
+    card.append(createElement("p", "card-body",
+        "These are candidate moments, not selections. Watch each one in the player above, " +
+        "then Keep the ones worth keeping or Reject the rest."));
+    const steps = createElement("ol", "review-steps");
+    const seekItem = createElement("li", "");
+    seekItem.append(createElement("strong", "", "Review & seek"),
+        document.createTextNode(" jumps the player to the candidate's moment."));
+    const decideItem = createElement("li", "");
+    decideItem.append(createElement("strong", "", "Keep / Reject"),
+        document.createTextNode(" records your decision on the project."));
+    const resetItem = createElement("li", "");
+    resetItem.append(createElement("strong", "", "Reset"),
+        document.createTextNode(" clears a decision back to unreviewed."));
+    steps.append(seekItem, decideItem, resetItem);
+    card.append(steps);
+    return card;
+}
+
 function createAlignmentCard(project) {
     const status = project.alignment ? project.alignment.status : ALIGNMENT_STATUS.UNVERIFIED;
     const body = status === ALIGNMENT_STATUS.UNVERIFIED
@@ -234,6 +257,7 @@ export function renderClipsView(mountElement, project, view = {}) {
     const handlers = { playerAvailable, currentCandidateId, onSelectCandidate, onKeep, onReject, onClearDecision };
     const sections = [
         createPlayerCard(playerMount, playerAvailable, playerUnavailableReason),
+        createReviewIntroCard(),
         createAlignmentCard(project)
     ];
 

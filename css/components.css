@@ -17,7 +17,7 @@
     font-weight: 600;
     font-size: var(--text-sm);
     white-space: nowrap;
-    transition: background var(--transition), border-color var(--transition);
+    transition: background var(--transition), border-color var(--transition), box-shadow var(--transition);
 }
 
 .button:hover {
@@ -28,6 +28,7 @@
     background: var(--accent);
     border-color: var(--accent);
     color: var(--accent-contrast);
+    box-shadow: 0 2px 12px rgba(139, 92, 246, 0.35);
 }
 
 .button-primary:hover {
@@ -64,6 +65,7 @@
 .nav-link {
     display: flex;
     align-items: center;
+    gap: var(--space-2);
     min-height: var(--touch-target);
     padding: 0 var(--space-3);
     border-radius: var(--radius-sm);
@@ -75,6 +77,11 @@
     /* Mobile strip: the active marker sits on the bottom edge. */
     border-bottom: 3px solid transparent;
     transition: background var(--transition), color var(--transition);
+}
+
+.nav-icon {
+    flex-shrink: 0;
+    opacity: 0.85;
 }
 
 .nav-link:hover {
@@ -91,35 +98,51 @@
 @media (min-width: 768px) {
     .nav-list {
         flex-direction: column;
-        padding: var(--space-3);
+        gap: var(--space-1);
+        padding: var(--space-2) var(--space-3);
     }
 
     .nav-link {
         border-bottom: none;
-        border-left: 3px solid transparent;
+        padding: var(--space-2) var(--space-3);
     }
 
-    /* Desktop sidebar: the active marker sits on the left edge. */
+    /* Desktop sidebar: the active item is a soft purple pill. */
     .nav-link.is-active {
         border-bottom-color: transparent;
-        border-left-color: var(--accent);
+        background: var(--accent-soft);
+        color: var(--text);
+    }
+
+    .nav-link.is-active .nav-icon {
+        color: var(--accent-strong);
+        opacity: 1;
     }
 }
 
 /* ---------- Cards ---------- */
 
 .card {
-    background: var(--panel);
-    border: 1px solid var(--border);
+    background: var(--panel-translucent);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius);
     padding: var(--space-4);
     min-width: 0;
+    box-shadow: var(--elevation-1);
 }
 
 .card-title {
     font-size: var(--text-base);
-    font-weight: 600;
+    font-weight: 650;
+    letter-spacing: -0.005em;
     margin-bottom: var(--space-2);
+}
+
+.card-subtitle {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--muted);
+    margin: var(--space-3) 0 var(--space-2);
 }
 
 .card-body {
@@ -130,6 +153,16 @@
 .detail-list + .card-body,
 .card-body + .card-body {
     margin-top: var(--space-2);
+}
+
+/* Section eyebrow: small caps label above a card group heading. */
+.section-eyebrow {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin-bottom: var(--space-1);
 }
 
 /* ---------- Form fields (video URL) ---------- */
@@ -343,21 +376,32 @@
 /* ---------- Status tag ---------- */
 
 .tag {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     padding: 2px var(--space-2);
-    border: 1px solid var(--border);
-    border-radius: 999px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-pill);
     font-size: 0.75rem;
-    color: var(--accent);
+    font-weight: 600;
+    color: var(--accent-strong);
+    background: var(--accent-soft);
     margin-bottom: var(--space-2);
 }
 
 .tag-danger {
     color: var(--danger);
+    background: var(--danger-soft);
 }
 
 .tag-muted {
     color: var(--muted);
+    background: rgba(139, 148, 165, 0.12);
+}
+
+.tag-success {
+    color: var(--success);
+    background: var(--success-soft);
 }
 
 /* ---------- Provider credential (Stage 2B) ---------- */
@@ -385,23 +429,36 @@
 
 .segment-list {
     list-style: none;
-    margin: 0;
+    margin: var(--space-3) 0 0;
     padding: 0;
     display: grid;
-    gap: var(--space-2);
 }
 
 .segment-item {
     display: grid;
-    grid-template-columns: 5.5rem 1fr;
-    gap: var(--space-2);
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
     font-size: var(--text-sm);
     overflow-wrap: anywhere;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.segment-item:last-child {
+    border-bottom: none;
 }
 
 .segment-time {
+    font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
-    color: var(--muted);
+    color: var(--accent-strong);
+    font-size: 0.8125rem;
+    padding-top: 2px;
+}
+
+.segment-text {
+    color: var(--text);
+    line-height: 1.6;
 }
 
 /* ---------- Load check (visible only if app.js fails) ---------- */
@@ -462,4 +519,230 @@
     flex-wrap: wrap;
     gap: var(--space-2);
     margin-left: auto;
+}
+
+/* ---------- Dashboard: video hero ---------- */
+
+.video-hero {
+    display: grid;
+    gap: var(--space-3);
+}
+
+.video-hero-top {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+}
+
+.video-hero-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    border-radius: var(--radius-sm);
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+}
+
+.video-hero-title {
+    font-size: var(--text-lg);
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    overflow-wrap: anywhere;
+}
+
+.video-hero-meta {
+    color: var(--muted);
+    font-size: var(--text-sm);
+    margin-top: var(--space-1);
+    overflow-wrap: anywhere;
+}
+
+.video-hero-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.video-hero-tags .tag {
+    margin-bottom: 0;
+}
+
+/* ---------- Dashboard: pipeline strip ---------- */
+
+.pipeline-list {
+    list-style: none;
+    margin: var(--space-3) 0 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-2);
+}
+
+.pipeline-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    font-size: var(--text-sm);
+}
+
+.pipeline-dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.pipeline-dot.is-done {
+    background: var(--success-soft);
+    color: var(--success);
+}
+
+.pipeline-dot.is-empty {
+    border: 1px solid var(--border);
+    color: var(--faint);
+}
+
+.pipeline-label {
+    font-weight: 600;
+}
+
+.pipeline-detail {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 720px) {
+    .pipeline-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+/* ---------- Dashboard: next actions ---------- */
+
+.action-list {
+    list-style: none;
+    margin: var(--space-3) 0 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-2);
+}
+
+.action-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    font-size: var(--text-sm);
+}
+
+.action-link {
+    color: var(--accent-strong);
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.action-link:hover {
+    text-decoration: underline;
+}
+
+.action-hint {
+    color: var(--muted);
+}
+
+/* ---------- Video URL form (dashboard primary action) ---------- */
+
+.url-form .field-label {
+    font-size: var(--text-base);
+}
+
+.url-form .field-row {
+    margin-top: var(--space-3);
+}
+
+/* ---------- Analysis scope radios ---------- */
+
+.radio-label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) 0;
+    font-size: var(--text-sm);
+    cursor: pointer;
+}
+
+.radio-label input[type="radio"] {
+    accent-color: var(--accent);
+    width: 1.1rem;
+    height: 1.1rem;
+    flex-shrink: 0;
+}
+
+.radio-label select {
+    margin-left: var(--space-2);
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: var(--touch-target);
+    padding: 0 var(--space-2);
+    background: var(--bg);
+    color: inherit;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font: inherit;
+    font-size: 1rem;
+}
+
+/* ---------- Transcript acquisition panel ---------- */
+
+.acquisition-panel .card-title {
+    margin-bottom: var(--space-2);
+}
+
+.credential-slot {
+    margin-top: var(--space-3);
+}
+
+/* ---------- Evidence quote (analysis) ---------- */
+
+.evidence-quote {
+    margin: var(--space-2) 0 0;
+    padding: var(--space-3);
+    background: var(--bg);
+    border: 1px solid var(--border-subtle);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--text);
+}
+
+/* ---------- Review intro (clips) ---------- */
+
+.review-steps {
+    margin: var(--space-3) 0 0;
+    padding-left: var(--space-4);
+    color: var(--muted);
+    font-size: var(--text-sm);
+    display: grid;
+    gap: var(--space-1);
+}
+
+.review-steps strong {
+    color: var(--text);
 }

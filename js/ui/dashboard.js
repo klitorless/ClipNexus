@@ -1,14 +1,19 @@
 // ==========================================================
 // dashboard.js
-// Responsibility: build the Dashboard view (video URL form,
-// project card, stats, stage status, loaded transcript
-// summary). Pure DOM building — receives data + callbacks,
-// returns elements.
+// Responsibility: build the Dashboard view — the control
+// center. Video URL form (primary action), project context
+// hero, pipeline status, contextual next actions, the honest
+// "about" card, and the loaded transcript summary.
+//
+// Pure DOM building — receives data + callbacks, returns
+// elements. Every status shown comes from real application
+// state; nothing is invented.
 // ==========================================================
 
 import { createElement, createDetailList } from "./dom.js";
 import { createVideoUrlForm, createProjectCard } from "./project-panel.js";
 import { createProvenanceRows } from "./provenance.js";
+import { CLIP_DECISION, getClipDecision } from "../analysis/clip-decisions.js";
 
 export function formatFileSize(bytes) {
     if (bytes < 1024) return `${bytes} B`;
@@ -16,20 +21,11 @@ export function formatFileSize(bytes) {
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-function createStatCard(label, value) {
-    const card = createElement("article", "card");
-    card.append(
-        createElement("p", "stat-label", label),
-        createElement("p", "stat-value", String(value))
-    );
-    return card;
-}
-
 function createStatusCard() {
     const card = createElement("article", "card");
     card.append(
         createElement("span", "tag", "About"),
-        createElement("h2", "card-title", "What VOD Analyzer does"),
+        createElement("h2", "card-title", "What ClipNexus does"),
         createElement(
             "p",
             "card-body",
@@ -68,6 +64,123 @@ export function createTranscriptSummaryCard(transcript, extraRows = []) {
     return card;
 }
 
+// Pipeline strip: one row per stage with a real count and an
+// honest done/empty dot. No invented metrics.
+function createPipelineCard(project) {
+    const card = createElement("article", "card");
+    card.append(createElement("h2", "card-title", "Project pipeline"));
+
+    const transcript = project ? project.transcript : null;
+    const pois = project ? project.pois.length : 0;
+    const events = project ? project.events.length : 0;
+    const specs = project ? project.clipSpecs.length : 0;
+    const kept = project
+        ? project.clipSpecs.filter((spec) => getClipDecision(project.clipDecisions, spec.id) === CLIP_DECISION.KEEP).length
+        : 0;
+
+    const rows = [
+        {
+            label: "Transcript",
+            done: transcript !== null,
+            detail: transcript ? `${transcript.segments.length.toLocaleString()} segments` : "Not loaded"
+        },
+        {
+            label: "POIs",
+            done: pois > 0,
+            detail: pois > 0 ? `${pois} discovered` : "None yet"
+        },
+        {
+            label: "Events",
+            done: events > 0,
+            detail: events > 0 ? `${events} reconciled` : "None yet"
+        },
+        {
+            label: "Clip candidates",
+            done: specs > 0,
+            detail: specs > 0 ? `${specs} candidates · ${kept} kept` : "None yet"
+        }
+    ];
+
+    const list = createElement("ul", "pipeline-list");
+    rows.forEach(({ label, done, detail }) => {
+        const item = createElement("li", "pipeline-item");
+        const dot = createElement("span", `pipeline-dot ${done ? "is-done" : "is-empty"}`, done ? "✓" : "○");
+        dot.setAttribute("aria-hidden", "true");
+        item.append(
+            dot,
+            createElement("span", "pipeline-label", label),
+            createElement("span", "pipeline-detail", detail)
+        );
+        list.append(item);
+    });
+    card.append(list);
+    return card;
+}
+
+// Next actions derived from real state. Each item links to the
+// route where the action happens.
+function createNextActionsCard(project) {
+    const card = createElement("article", "card");
+    card.append(createElement("h2", "card-title", "Next actions"));
+
+    const transcript = project ? project.transcript : null;
+    const specs = project ? project.clipSpecs : [];
+    const undecided = specs.filter((spec) =>
+        getClipDecision(project.clipDecisions, spec.id) === null).length;
+
+    const actions = [];
+    if (!project || !project.video) {
+        actions.push({
+            link: null, text: "Load a video",
+            hint: "Enter a YouTube URL in the form above to start a project."
+        });
+    } else if (!transcript) {
+        actions.push({
+            link: "#transcripts", text: "Add a transcript",
+            hint: "Upload a file or fetch captions with a provider key."
+        });
+    } else {
+        if (project.pois.length === 0) {
+            actions.push({
+                link: "#analysis", text: "Run analysis",
+                hint: "Surface question patterns with traceable evidence."
+            });
+        }
+        if (undecided > 0) {
+            actions.push({
+                link: "#clips", text: `Review ${undecided} candidate${undecided === 1 ? "" : "s"}`,
+                hint: "Watch each moment, then Keep or Reject it."
+            });
+        } else if (specs.length > 0) {
+            actions.push({
+                link: null, text: "All candidates reviewed",
+                hint: "Reset a decision in the Clip Queue to revisit it."
+            });
+        }
+    }
+
+    if (actions.length === 0) {
+        card.append(createElement("p", "card-body", "Nothing pending."));
+        return card;
+    }
+
+    const list = createElement("ul", "action-list");
+    actions.forEach(({ link, text, hint }) => {
+        const item = createElement("li", "action-item");
+        if (link) {
+            const anchor = createElement("a", "action-link", text);
+            anchor.href = link;
+            item.append(anchor);
+        } else {
+            item.append(createElement("span", "pipeline-label", text));
+        }
+        item.append(createElement("span", "action-hint", hint));
+        list.append(item);
+    });
+    card.append(list);
+    return card;
+}
+
 /**
  * @param {HTMLElement} mountElement
  * @param {object} appState
@@ -77,13 +190,6 @@ export function renderDashboard(mountElement, appState, handlers) {
     const project = appState.get("project");
     const transcript = project ? project.transcript : null;
 
-    const stats = createElement("div", "stat-grid");
-    stats.append(
-        createStatCard("Transcripts", transcript ? 1 : 0),
-        createStatCard("POIs discovered", project ? project.pois.length : 0),
-        createStatCard("Clip candidates", project ? project.clipSpecs.length : 0)
-    );
-
     mountElement.replaceChildren(
         createVideoUrlForm({
             onSubmit: handlers.onVideoUrlSubmit,
@@ -91,7 +197,8 @@ export function renderDashboard(mountElement, appState, handlers) {
             apiKey: handlers.youTubeApiKey || null
         }),
         createProjectCard(project),
-        stats,
+        createPipelineCard(project),
+        createNextActionsCard(project),
         createStatusCard()
     );
 

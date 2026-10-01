@@ -475,7 +475,7 @@ export function addProviderTests(add) {
         const mount = renderDetached((element) =>
             renderDashboard(element, stubState, { onVideoUrlSubmit: () => ({ ok: true, message: "" }) }));
         const text = mount.textContent;
-        return text.includes("What VOD Analyzer does") &&
+        return text.includes("What ClipNexus does") &&
             text.includes("your own Supadata API key") &&
             text.includes("Clip Queue") && text.includes("Keep") &&
             text.includes("Not built yet") &&

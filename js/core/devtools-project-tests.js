@@ -323,12 +323,16 @@ export function addStage17Tests(add) {
             empty.textContent.includes("No video linked");
     });
 
-    add("dashboard: status card describes Stage 1.7", () => {
+    add("dashboard: pipeline and next actions describe real project state", () => {
         const stubState = { get: (key) => (key === "ui" ? {} : null) };
         const mount = renderDetached((element) =>
             renderDashboard(element, stubState, { onVideoUrlSubmit: () => ({ ok: true, message: "" }) }));
         const text = mount.textContent;
-        return text.includes("Stage 1.7 — Project & Video Foundation") &&
+        return text.includes("Project pipeline") &&
+            text.includes("Next actions") &&
+            text.includes("Not loaded") &&
+            text.includes("Load a video") &&
+            !text.includes("Stage 1.7 — Project & Video Foundation") &&
             !text.includes("Stage 1 — Application Shell");
     });
 }

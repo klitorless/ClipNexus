@@ -6,25 +6,33 @@
    ========================================================== */
 
 :root {
-    /* Surfaces */
-    --bg: #0f1115;
-    --panel: #161a20;
-    --panel-2: #1d222a;
-    --border: #2a303a;
+    /* Surfaces — deep slate/navy foundation */
+    --bg: #0a0e14;
+    --panel: #10151d;
+    --panel-2: #161c26;
+    --panel-translucent: rgba(16, 21, 29, 0.72);
+    --border: #232b38;
+    --border-subtle: #1a212c;
 
     /* Text */
-    --text: #e3e6eb;
-    --muted: #8b93a1;
+    --text: #e8ebf1;
+    --muted: #8b94a5;
+    --faint: #5d6678;
 
-    /* Signals */
-    --accent: #4fb3a9;
-    --accent-strong: #6cc9bf;
-    --accent-contrast: #0b1413;
-    --danger: #e0665c;
+    /* Signals — purple primary accent */
+    --accent: #8b5cf6;
+    --accent-strong: #a78bfa;
+    --accent-soft: rgba(139, 92, 246, 0.14);
+    --accent-contrast: #ffffff;
+    --success: #34d399;
+    --success-soft: rgba(52, 211, 153, 0.12);
+    --danger: #f87171;
+    --danger-soft: rgba(248, 113, 113, 0.12);
 
     /* Shape & spacing */
-    --radius: 8px;
-    --radius-sm: 6px;
+    --radius: 10px;
+    --radius-sm: 7px;
+    --radius-pill: 999px;
     --space-1: 4px;
     --space-2: 8px;
     --space-3: 12px;
@@ -45,6 +53,7 @@
     --touch-target: 44px;
     --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
     --transition: 150ms ease;
+    --elevation-1: 0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 16px rgba(0, 0, 0, 0.25);
 }
 
 *,
@@ -61,6 +70,9 @@ body {
     margin: 0;
     min-height: 100vh;
     background: var(--bg);
+    /* Faint ambient glow behind the app — decorative only. */
+    background-image: radial-gradient(1100px 480px at 70% -10%, rgba(139, 92, 246, 0.07), transparent 70%);
+    background-attachment: fixed;
     color: var(--text);
     font-family: var(--font-sans);
     font-size: var(--text-base);

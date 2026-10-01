@@ -1,8 +1,10 @@
 /* ==========================================================
    layout.css
-   App shell grid: header, sidebar, main area.
-   Mobile first: stacked layout. Sidebar moves to the left
-   column at 768px and wider.
+   App shell grid: sidebar, header, main area.
+   Mobile first: stacked layout (header + horizontal nav
+   strip in a sticky top cluster). At 768px and wider the
+   sidebar becomes a full-height left column and the header
+   becomes a slim top bar — the dashboard concept layout.
    ========================================================== */
 
 .app-shell {
@@ -23,10 +25,12 @@
     position: sticky;
     top: 0;
     z-index: 10;
-    background: var(--panel);
+    background: var(--panel-translucent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
 }
 
-/* ---------- Header ---------- */
+/* ---------- Header (top bar) ---------- */
 
 .app-header {
     grid-area: header;
@@ -35,11 +39,14 @@
     justify-content: space-between;
     gap: var(--space-3);
     padding: var(--space-3) var(--space-4);
-    background: var(--panel);
-    border-bottom: 1px solid var(--border);
-    position: sticky;
-    top: 0;
-    z-index: 10;
+    background: transparent;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+/* Compact brand shown in the header on mobile only; the
+   sidebar carries the full brand on desktop. */
+.brand-in-header {
+    display: flex;
 }
 
 .brand {
@@ -47,6 +54,8 @@
     align-items: center;
     gap: var(--space-2);
     min-width: 0;
+    text-decoration: none;
+    color: inherit;
 }
 
 .brand-mark {
@@ -56,22 +65,44 @@
 
 .brand-name {
     font-weight: 700;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.02em;
     font-size: var(--text-base);
     white-space: nowrap;
 }
 
-/* ---------- Sidebar (mobile: horizontal scroll strip) ---------- */
+.brand-sub {
+    display: block;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    text-transform: uppercase;
+}
+
+.brand-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.25;
+    min-width: 0;
+}
+
+/* ---------- Sidebar ---------- */
 
 .app-sidebar {
     grid-area: sidebar;
     background: var(--panel);
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--border-subtle);
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     /* Fade the strip's trailing edge so the sideways scroll is discoverable. */
     -webkit-mask-image: linear-gradient(to right, #000 88%, transparent 100%);
     mask-image: linear-gradient(to right, #000 88%, transparent 100%);
+}
+
+/* Full brand + footer live in the sidebar on desktop only. */
+.brand-in-sidebar,
+.sidebar-footer {
+    display: none;
 }
 
 /* ---------- Main ---------- */
@@ -84,7 +115,8 @@
 
 .page-title {
     font-size: var(--text-xl);
-    font-weight: 600;
+    font-weight: 650;
+    letter-spacing: -0.01em;
     margin-bottom: var(--space-4);
 }
 
@@ -92,16 +124,17 @@
     display: grid;
     gap: var(--space-4);
     max-width: 1100px;
+    align-content: start;
 }
 
 /* ---------- Desktop / tablet ---------- */
 
 @media (min-width: 768px) {
     .app-shell {
-        grid-template-columns: 220px minmax(0, 1fr);
+        grid-template-columns: 248px minmax(0, 1fr);
         grid-template-rows: auto 1fr;
         grid-template-areas:
-            "header header"
+            "sidebar header"
             "sidebar main";
     }
 
@@ -111,15 +144,59 @@
         display: contents;
     }
 
+    .app-header {
+        background: var(--panel-translucent);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        padding: var(--space-3) var(--space-6);
+        /* The mobile brand is hidden on desktop, leaving the
+           upload control alone — anchor it to the right edge. */
+        justify-content: flex-end;
+    }
+
+    .brand-in-header {
+        display: none;
+    }
+
     .app-sidebar {
+        grid-row: 1 / 3;
         border-bottom: none;
-        border-right: 1px solid var(--border);
+        border-right: 1px solid var(--border-subtle);
         overflow-x: visible;
         -webkit-mask-image: none;
         mask-image: none;
+        /* Full-height column: brand, nav, footer. */
+        display: flex;
+        flex-direction: column;
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        overflow-y: auto;
+    }
+
+    .brand-in-sidebar {
+        display: flex;
+        padding: var(--space-5) var(--space-4) var(--space-4);
+    }
+
+    .sidebar-footer {
+        display: block;
+        margin-top: auto;
+        padding: var(--space-4);
+        border-top: 1px solid var(--border-subtle);
+        font-size: 0.75rem;
+        color: var(--faint);
+        line-height: 1.5;
     }
 
     .app-main {
         padding: var(--space-6);
+    }
+
+    .content {
+        max-width: 1200px;
     }
 }

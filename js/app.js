@@ -70,8 +70,22 @@ const placeholderText = {
     settings: "Analysis window, overlap, and provider settings will live here."
 };
 
+// The POI/Event placeholders show where the route sits in the
+// evidence chain, with real counts from the current project —
+// no invented data, just the honest pipeline position.
 function renderPlaceholderView(mount, routeId) {
-    mount.replaceChildren(createInfoCard("Not built yet", placeholderText[routeId], "Stage 1"));
+    const project = state.get("project");
+    const cards = [createInfoCard("Not built yet", placeholderText[routeId], "Stage 1")];
+    if (project && (routeId === "pois" || routeId === "events")) {
+        const chain = [
+            `Transcript: ${project.transcript ? `${project.transcript.segments.length} segments` : "not loaded"}`,
+            `POIs: ${project.pois.length}`,
+            `Events: ${project.events.length}`,
+            `Clip candidates: ${project.clipSpecs.length}`
+        ].join("  →  ");
+        cards.push(createInfoCard("Evidence chain", chain, "Pipeline"));
+    }
+    mount.replaceChildren(...cards);
 }
 
 function renderView(routeId) {
@@ -82,7 +96,7 @@ function renderView(routeId) {
 
     const route = routes.find((item) => item.id === routeId);
     elements.pageTitle.textContent = route ? route.label : "Dashboard";
-    document.title = `${elements.pageTitle.textContent} · VOD Analyzer`;
+    document.title = `${elements.pageTitle.textContent} · ClipNexus`;
 
     const project = state.get("project");
     if (routeId === "dashboard") renderDashboard(elements.content, state, {

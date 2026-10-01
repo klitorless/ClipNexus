@@ -11,7 +11,7 @@
     <meta http-equiv="Content-Security-Policy"
           content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.supadata.ai https://www.googleapis.com; frame-src https://www.youtube-nocookie.com; base-uri 'none'; form-action 'none'">
     <meta name="referrer" content="no-referrer">
-    <title>VOD Analyzer</title>
+    <title>ClipNexus</title>
 
     <!-- Styles: base tokens, page layout, reusable components -->
     <link rel="stylesheet" href="./css/base.css">
@@ -24,16 +24,14 @@
         <!-- Sticky top cluster on mobile (header + nav strip); the
              wrapper dissolves on desktop via display: contents. -->
         <div class="app-top">
-            <!-- Top bar: brand + upload control -->
+            <!-- Top bar: brand (mobile) + upload control -->
             <header class="app-header">
-                <div class="brand">
-                    <svg class="brand-mark" viewBox="0 0 24 24" width="24" height="24" fill="none"
-                         stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                         stroke-linejoin="round" aria-label="VOD Analyzer logo" role="img">
-                        <rect x="2.5" y="4.5" width="19" height="15" rx="2"></rect>
-                        <path d="M6 15l3-4 3 2.5 3-5 3 6.5"></path>
+                <div class="brand brand-in-header">
+                    <svg class="brand-mark" viewBox="0 0 24 24" width="26" height="26"
+                         aria-label="ClipNexus logo" role="img">
+                        <path d="M6 4.5v15l13-7.5z" fill="currentColor"></path>
                     </svg>
-                    <span class="brand-name">VOD ANALYZER</span>
+                    <span class="brand-name">ClipNexus</span>
                 </div>
 
                 <button id="upload-button" class="button button-primary" type="button">
