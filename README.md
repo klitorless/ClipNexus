@@ -15,7 +15,7 @@ The goal is to build a reliable pipeline that preserves evidence, uncertainty, p
 
 Current Status
 
-Development stage: post–Stage 10 UI refinement — user-facing dashboard copy, corrected clip-candidate stat, and refined mobile navigation (sticky header + nav strip, bottom active indicator, scroll fade)
+Development stage: post–Stage 10 — caption service (Cloudflare Worker) powering keyless YouTube transcript acquisition with automatic video title + duration, UI refinement pass (dashboard copy, mobile navigation)
 
 Stage| Status| Description
 Stage 1| ✅ Complete| Frontend shell and application structure
@@ -71,7 +71,7 @@ The Stage 6 validator reports end-before-start, backward ordering (resets vs. lo
 
 ![Self-test console](docs/images/v2-selftest-console.webp)
 
-`await vodAnalyzer.runSelfTests()` runs 472 checks in the browser console with no network calls. No pytest, no CI — this is the real interface.
+`await vodAnalyzer.runSelfTests()` runs 541 checks in the browser console with no network calls. No pytest, no CI — this is the real interface.
 
 ### Mobile navigation refinement — CURRENT
 
@@ -306,7 +306,7 @@ All paths converge on the same canonical document.
 
 Current Providers
 
-**YouTube native captions** (no API key) — fetches the video's existing YouTube captions through the ClipNexus caption service: the app sends only the video ID to the configured service URL, which returns the captions as WebVTT. No user API key is required when YouTube captions are available. The service picks the track itself (manual captions preferred, auto-generated accepted); the app always reports the language and native/generated status the service actually returned. Supadata remains the automatic fallback when the service has no captions for the video or cannot be reached. The current caption service is a Cloudflare Worker whose deployable source lives in this repo at `workers/youtube-caption-service/` (deploying it replaces the `clipnexus-youtube-caption-test` Worker at the configured URL); the service URL lives in one place — `YOUTUBE_CAPTION_SERVICE_URL` in `js/transcript/providers/adapters/youtube-native.js` — so pointing the provider at a production backend later needs no other changes.
+**YouTube native captions** (no API key) — fetches the video's existing YouTube captions through the ClipNexus caption service: the app sends only the video ID to the configured service URL, which returns the captions as WebVTT. No user API key is required when YouTube captions are available. The service picks the track itself (manual captions preferred, auto-generated accepted); the app always reports the language and native/generated status the service actually returned. The service also returns the video's **title** (`X-Video-Title` header) and **duration** (`X-Video-Duration` header), which the Dashboard applies automatically — so the video hero shows the real title and duration with no API key. A YouTube Data API key remains available as an optional, session-only title override (Settings), and it never overwrites a title the caption service already supplied. Supadata remains the automatic fallback when the service has no captions for the video or cannot be reached. The current caption service is a Cloudflare Worker whose deployable source lives in this repo at `workers/youtube-caption-service/` (deploying it replaces the `clipnexus-youtube-caption-test` Worker at the configured URL); the service URL lives in one place — `YOUTUBE_CAPTION_SERVICE_URL` in `js/transcript/providers/adapters/youtube-native.js` — so pointing the provider at a production backend later needs no other changes.
 
 **Supadata** — hosted transcript API using your own Supadata API key, entered at runtime. Still available as the authenticated provider and manual override.
 
@@ -726,6 +726,8 @@ Phase 2 — Transcript Infrastructure
 - [x] Provider architecture
 - [x] Acquisition state management
 - [x] Supadata provider
+- [x] YouTube native captions provider (keyless, via caption service)
+- [x] Video title + duration metadata (keyless, via caption service)
 - [x] Provider error normalization
 - [x] Provenance tracking
 - [x] Transcript chunking
@@ -1100,7 +1102,7 @@ Every `TranscriptDocument` has one `acquisition` record with the same shape for 
 
 `detail` (console only) holds structural facts such as `httpStatus`, Supadata's error code, a fixed reason, the deadline, or the `jobId`. It never holds Supadata's message text, and neither the message nor the key is ever shown or stored. Without a key, the request check fails with `CREDENTIAL_REQUIRED` and nothing is sent.
 
-**Network statement.** The app's external requests are: the Supadata transcript request (plus polling for the same job), sent after you tap Get Transcript; the YouTube Data API title request, sent only when you supply a key for it; and the no-key caption-service request (`GET` the configured service URL with the video ID), sent automatically when you load a YouTube VOD. A Content-Security-Policy in `index.html` enforces this: `connect-src 'self' https://api.supadata.ai https://www.googleapis.com https://clipnexus-youtube-caption-test.klitorless.workers.dev`, and no third-party scripts, styles, fonts, or images.
+**Network statement.** The app's external requests are: the Supadata transcript request (plus polling for the same job), sent after you tap Get Transcript; the optional YouTube Data API title request, sent only when you supply a key for it as a title override; and the no-key caption-service request (`GET` the configured service URL with the video ID), sent automatically when you load a YouTube VOD — this single request returns the captions plus the video's title and duration. A Content-Security-Policy in `index.html` enforces this: `connect-src 'self' https://api.supadata.ai https://www.googleapis.com https://clipnexus-youtube-caption-test.klitorless.workers.dev`, and no third-party scripts, styles, fonts, or images.
 
 **Tradeoff.** Calling Supadata straight from the browser is fine for a single user with their own key. A shared or multi-user deployment should put a small server-side proxy in front of it so the key never reaches browsers. The adapter would then point at that proxy, and nothing else would need to change.
 
@@ -1238,7 +1240,7 @@ No install or build step. Open `index.html` through any local static server. On 
 Open the browser console (Acode: enable "Show Console Toggler" in Preview settings) and run:
 
 ```js
-await vodAnalyzer.runSelfTests()   // 472 checks, printed as a table (no network)
+await vodAnalyzer.runSelfTests()   // 541 checks, printed as a table (no network)
 vodAnalyzer.listProviders()        // registry descriptors
 vodAnalyzer.registerMockProviders() // optional UI preview: "Mock A (always fails)" + "Mock B (returns test data)"
 vodAnalyzer.inspectProject()    // the frozen Project (or null)
@@ -1316,7 +1318,7 @@ Stage 2B was also checked by hand against the live Supadata API with a real key.
 
 - Files are read locally with `File.text()` and kept in memory only.
 - No analytics, tracking, telemetry, or third-party scripts. Video URLs are resolved locally and never fetched.
-- The external requests are the Supadata transcript request (and polling for its job), made after you tap Get Transcript with your own key; the YouTube Data API title request, made only with a key you supply; and the no-key caption-service request, which sends only the video ID to the configured public service URL. The CSP in `index.html` allows connections only to the app itself, `https://api.supadata.ai`, `https://www.googleapis.com`, and the caption-service Worker host.
+- The external requests are the Supadata transcript request (and polling for its job), made after you tap Get Transcript with your own key; the optional YouTube Data API title request, made only with a key you supply as a title override; and the no-key caption-service request, which sends only the video ID to the configured public service URL and returns the captions plus the video's title and duration. The CSP in `index.html` allows connections only to the app itself, `https://api.supadata.ai`, `https://www.googleapis.com`, and the caption-service Worker host.
 - API keys are held in memory only and never saved, logged, rendered, or committed. Supadata's error text is never shown.
 - Supadata receives the canonical YouTube URL and your key. Its own privacy policy applies to that request. Provider names, errors, and provenance are rendered with `textContent`. Provider error text is never shown, only the fixed message for its code.
 - Video URL input is untrusted. It is parsed with `new URL()`, only `http(s)` is accepted, and it is displayed with `textContent`. No links, images, or iframes are created from it.
@@ -1330,14 +1332,14 @@ Stage 2B was also checked by hand against the live Supadata API with a real key.
 - Format detection is extension-only.
 - `File.text()` always decodes as UTF-8 and drops a leading byte-order mark. Non-UTF-8 files (e.g. Windows-1252 SRTs) may show replacement characters.
 - One project (one video, one transcript) at a time, held in memory; it's gone after a page reload.
-- Video: identity only. Title, thumbnail, and duration are never fetched (`metadata.status` stays `unknown`).
-- Only one real provider (Supadata, YouTube only). youtube-transcript-api is still a placeholder that needs a backend.
+- Video: title and duration are fetched automatically with the transcript via the caption service (`metadata.status` becomes `loaded`); thumbnail is still never fetched.
+- Two real providers, both YouTube-only: YouTube native captions (default, keyless, automatic) and Supadata (keyed fallback / manual override). Other platforms have no provider yet.
 - The Supadata key is forgotten on reload by design, so you re-enter it each session.
 - Supadata's `upgrade-required` (402) maps to `RATE_LIMITED`, because the standard vocabulary has no "plan/quota" code.
 - With `mode=auto`, whether the captions were native or generated is unknown (`generated: null`), because Supadata doesn't report it.
 - Very long videos that take longer than the 25 s deadline to generate give `PROVIDER_TIMEOUT`. Trying again may help. A retry sends a new request and doesn't resume the old job.
 - Direct browser calls suit a single user. A shared deployment needs a server-side proxy (see the tradeoff above).
-- No embedded player, no playback, no seeking.
+- The embedded player (Stage 10) supports playback and seek-to-segment for review; there is no clip rendering or editing.
 - The language list is a fixed placeholder, not reported by providers.
 - A successful acquisition replaces an existing transcript without a separate confirmation (a failed one never changes it). The panel says so before you tap Get Transcript.
 - Only YouTube is recognized. YouTube ID validation is by shape (11 characters). The resolver cannot tell whether the video actually exists or is public.
