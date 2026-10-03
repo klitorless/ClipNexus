@@ -1,0 +1,13 @@
+# Deploy with Wrangler: clipnexus-youtube-caption-test
+#
+# This replaces the existing `clipnexus-youtube-caption-test` Worker at
+# https://clipnexus-youtube-caption-test.klitorless.workers.dev/youtube-transcript
+# — the exact URL the ClipNexus youtube-native provider is configured for.
+# Deploying under the same name keeps the client working with no changes.
+
+name = "clipnexus-youtube-caption-test"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# No KV, R2, D1, queues, or secrets: the Worker is stateless and
+# stores nothing. It only fetches YouTube's caption endpoints.
