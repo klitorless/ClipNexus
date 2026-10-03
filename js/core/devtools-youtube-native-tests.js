@@ -199,6 +199,28 @@ export function addYouTubeNativeTests(add) {
         return result.success === true && result.videoTitle === null;
     });
 
+    add("youtube-native: X-Video-Duration header surfaces as videoDurationSeconds", async () => {
+        const { registry } = setup([reply(200, SAMPLE_VTT, vttHeaders({
+            "X-Video-Duration": "212"
+        }))]);
+        const result = await acquire(registry, projectFor());
+        return result.success === true && result.videoDurationSeconds === 212;
+    });
+
+    add("youtube-native: missing X-Video-Duration → videoDurationSeconds is null", async () => {
+        const { registry } = setup([reply(200, SAMPLE_VTT, vttHeaders())]);
+        const result = await acquire(registry, projectFor());
+        return result.success === true && result.videoDurationSeconds === null;
+    });
+
+    add("youtube-native: non-integer X-Video-Duration → videoDurationSeconds is null", async () => {
+        const { registry } = setup([reply(200, SAMPLE_VTT, vttHeaders({
+            "X-Video-Duration": "12.5"
+        }))]);
+        const result = await acquire(registry, projectFor());
+        return result.success === true && result.videoDurationSeconds === null;
+    });
+
     add("youtube-native: method native with only auto-generated captions → TRANSCRIPT_UNAVAILABLE", async () => {
         const { registry } = setup([reply(200, SAMPLE_VTT, vttHeaders({ "X-Caption-Generated": "true" }))]);
         const result = await acquire(registry, projectFor(), { method: "native" });

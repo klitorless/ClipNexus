@@ -116,6 +116,16 @@ function decodeVideoTitle(value) {
     }
 }
 
+// The service may also report the video's duration in whole seconds
+// (X-Video-Duration). Returns the integer, or null when absent or
+// not a non-negative integer.
+function decodeVideoDuration(value) {
+    if (typeof value !== "string" || value.length === 0) return null;
+    if (!/^\d+$/.test(value.trim())) return null;
+    const n = Number(value.trim());
+    return Number.isSafeInteger(n) ? n : null;
+}
+
 // The service's { error: { type, message } } body → its type, or
 // null when the body is not that shape. The human-readable
 // message is untrusted service text and is never kept.
@@ -203,6 +213,7 @@ export function createYouTubeNativeProvider({ fetchImpl, requestDeadlineMs, capt
                     success: true,
                     transcript: { rawText: body, format: "vtt" },
                     videoTitle: decodeVideoTitle(headerValue(response.headers, "X-Video-Title")),
+                    videoDurationSeconds: decodeVideoDuration(headerValue(response.headers, "X-Video-Duration")),
                     source: {
                         method,
                         language: headerValue(response.headers, "X-Caption-Language"),

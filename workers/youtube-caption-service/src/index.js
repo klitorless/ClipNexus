@@ -52,7 +52,7 @@ const USER_AGENT =
     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
 const EXPOSED_CAPTION_HEADERS =
-    "X-Caption-Language, X-Caption-Generated, X-Caption-Source, X-Caption-Format, X-Video-Title";
+    "X-Caption-Language, X-Caption-Generated, X-Caption-Source, X-Caption-Format, X-Video-Title, X-Video-Duration";
 
 // Video titles travel as a response header (percent-encoded UTF-8,
 // since HTTP headers are Latin-1). Truncated to keep headers small.
@@ -63,6 +63,13 @@ function encodeVideoTitle(title) {
     const trimmed = title.trim();
     if (!trimmed) return null;
     return encodeURIComponent(trimmed.slice(0, MAX_TITLE_LENGTH));
+}
+
+// Video duration travels as plain integer seconds in X-Video-Duration.
+function normalizeDurationSeconds(value) {
+    const n = typeof value === "string" ? Number(value) : value;
+    if (!Number.isInteger(n) || n < 0) return null;
+    return String(n);
 }
 
 // --- Response helpers: CORS is applied here, so no response path
@@ -91,6 +98,7 @@ export function vttResponse(body, meta) {
         "X-Caption-Format": meta.format
     });
     if (meta.videoTitle) headers["X-Video-Title"] = meta.videoTitle;
+    if (meta.videoDuration) headers["X-Video-Duration"] = meta.videoDuration;
     return new Response(body, { status: 200, headers });
 }
 
@@ -309,7 +317,10 @@ async function captionTracksViaInnerTube(videoId, fetchImpl, timeoutMs) {
     const title = data && data.videoDetails && typeof data.videoDetails.title === "string"
         ? data.videoDetails.title
         : null;
-    return { tracks: Array.isArray(tracks) ? tracks : null, title };
+    const durationSeconds = data && data.videoDetails
+        ? normalizeDurationSeconds(data.videoDetails.lengthSeconds)
+        : null;
+    return { tracks: Array.isArray(tracks) ? tracks : null, title, durationSeconds };
 }
 
 /** Mechanism B: watch-page fallback. Same result shape as mechanism A. */
@@ -331,13 +342,26 @@ async function captionTracksViaWatchPage(videoId, fetchImpl, timeoutMs) {
     if (!res.ok) return { httpStatus: res.status };
     const html = await res.text();
     const raw = extractJsonValue(html, '"captionTracks":');
-    if (raw === null) return { tracks: null, title: extractVideoTitle(html) };
-    let title = extractVideoTitle(html);
+    const title = extractVideoTitle(html);
+    const durationSeconds = extractVideoDuration(html);
+    if (raw === null) return { tracks: null, title, durationSeconds };
     try {
         const parsed = JSON.parse(raw);
-        return { tracks: Array.isArray(parsed) ? parsed : null, title };
+        return { tracks: Array.isArray(parsed) ? parsed : null, title, durationSeconds };
     } catch {
-        return { malformed: true, title };
+        return { malformed: true, title, durationSeconds };
+    }
+}
+
+/** Best-effort video duration (integer seconds, as a string) from watch-page HTML. */
+export function extractVideoDuration(html) {
+    const raw = extractJsonValue(html, '"videoDetails":');
+    if (raw === null) return null;
+    try {
+        const details = JSON.parse(raw);
+        return details ? normalizeDurationSeconds(details.lengthSeconds) : null;
+    } catch {
+        return null;
     }
 }
 
@@ -412,12 +436,14 @@ export function createRequestHandler({ fetchImpl = fetch, timeoutMs = FETCH_TIME
         let mechanism = null;
         let softFailure = null;
         let videoTitle = null;
+        let videoDuration = null;
         try {
             const inner = await captionTracksViaInnerTube(videoId, fetchImpl, timeoutMs);
             if (inner.rateLimited) softFailure = "rate-limited";
             else if (inner.tracks) { tracks = inner.tracks; mechanism = "innertube"; }
             else if (inner.malformed || inner.httpStatus) softFailure = "retrieval-failure";
             if (inner.title) videoTitle = inner.title;
+            if (inner.durationSeconds) videoDuration = inner.durationSeconds;
         } catch (err) {
             softFailure = isTimeoutError(err) ? "timeout" : "retrieval-failure";
         }
@@ -428,6 +454,7 @@ export function createRequestHandler({ fetchImpl = fetch, timeoutMs = FETCH_TIME
                 else if (page.tracks) { tracks = page.tracks; mechanism = "watch-page"; }
                 else if (!softFailure) softFailure = "transcript-unavailable";
                 if (!videoTitle && page.title) videoTitle = page.title;
+                if (!videoDuration && page.durationSeconds) videoDuration = page.durationSeconds;
             } catch (err) {
                 if (!softFailure) softFailure = isTimeoutError(err) ? "timeout" : "retrieval-failure";
             }
@@ -518,7 +545,8 @@ export function createRequestHandler({ fetchImpl = fetch, timeoutMs = FETCH_TIME
             generated: !isManual(track),
             source: mechanism || "unknown",
             format: sourceFormat,
-            videoTitle: encodeVideoTitle(videoTitle)
+            videoTitle: encodeVideoTitle(videoTitle),
+            videoDuration: videoDuration
         });
     };
 }

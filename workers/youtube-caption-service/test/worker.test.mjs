@@ -37,7 +37,9 @@ const SAMPLE_VTT = "WEBVTT\n\n00:00:01.360 --> 00:00:03.040\nNever gonna give yo
 
 // Build a mock fetch. routes: { innertube: <tracks|null|"429"|"timeout">,
 // watchPage: <tracks|null>, videoTitle: <string|null> (innertube
-// videoDetails.title), watchTitle: <string|null> (watch-page title),
+// videoDetails.title), videoDuration: <string|number|null> (innertube
+// videoDetails.lengthSeconds), watchTitle: <string|null> (watch-page
+// title), watchDuration: <string|number|null> (watch-page length),
 // trackBody: <string>, trackStatus: <number> }.
 // Captures every requested URL in calls[].
 function mockFetch(routes) {
@@ -57,13 +59,21 @@ function mockFetch(routes) {
                 captions: tracks
                     ? { playerCaptionsTracklistRenderer: { captionTracks: tracks } }
                     : {},
-                ...(routes.videoTitle ? { videoDetails: { title: routes.videoTitle } } : {})
+                ...((routes.videoTitle || routes.videoDuration != null) ? {
+                    videoDetails: {
+                        ...(routes.videoTitle ? { title: routes.videoTitle } : {}),
+                        ...(routes.videoDuration != null ? { lengthSeconds: String(routes.videoDuration) } : {})
+                    }
+                } : {})
             });
         }
         if (u.startsWith("https://www.youtube.com/watch")) {
             const tracks = routes.watchPage ?? null;
-            const details = routes.watchTitle
-                ? `"videoDetails":{"videoId":"${VID}","title":${JSON.stringify(routes.watchTitle)}},`
+            const details = (routes.watchTitle || routes.watchDuration != null)
+                ? `"videoDetails":{"videoId":"${VID}"` +
+                  (routes.watchTitle ? `,"title":${JSON.stringify(routes.watchTitle)}` : "") +
+                  (routes.watchDuration != null ? `,"lengthSeconds":"${routes.watchDuration}"` : "") +
+                  "},"
                 : "";
             const html = tracks
                 ? `<html><head><title>${routes.watchTitle || "t"} - YouTube</title></head><script>var x = {${details}"captionTracks":${JSON.stringify(tracks)}};</script></html>`
@@ -319,6 +329,57 @@ describe("video title header", () => {
             "Tag Title"
         );
         assert.equal(extractVideoTitle(`<html><body>nothing</body></html>`), null);
+    });
+
+    it("exposes the video metadata headers via CORS", async () => {
+        const res = await get(
+            handlerFor({ innertube: [EN_MANUAL], trackBody: SAMPLE_VTT }),
+            `/youtube-transcript?v=${VID}`
+        );
+        const exposed = res.headers.get("Access-Control-Expose-Headers") || "";
+        for (const h of ["X-Video-Title", "X-Video-Duration"]) {
+            assert.ok(exposed.includes(h), `exposed headers must include ${h}`);
+        }
+    });
+
+    it("emits X-Video-Duration from InnerTube lengthSeconds", async () => {
+        const res = await get(
+            handlerFor({ innertube: [EN_MANUAL], videoDuration: 212, trackBody: SAMPLE_VTT }),
+            `/youtube-transcript?v=${VID}`
+        );
+        assert.equal(res.status, 200);
+        assert.equal(res.headers.get("X-Video-Duration"), "212");
+    });
+
+    it("falls back to the watch-page duration when InnerTube has none", async () => {
+        const res = await get(
+            handlerFor({ innertube: null, watchPage: [EN_ASR], watchDuration: 95, trackBody: SAMPLE_VTT }),
+            `/youtube-transcript?v=${VID}`
+        );
+        assert.equal(res.status, 200);
+        assert.equal(res.headers.get("X-Video-Duration"), "95");
+    });
+
+    it("omits X-Video-Duration when no duration is available", async () => {
+        const res = await get(
+            handlerFor({ innertube: [EN_MANUAL], trackBody: SAMPLE_VTT }),
+            `/youtube-transcript?v=${VID}`
+        );
+        assert.equal(res.status, 200);
+        assert.equal(res.headers.get("X-Video-Duration"), null);
+    });
+
+    it("rejects non-integer durations via extractVideoDuration", async () => {
+        const { extractVideoDuration } = await import("../src/index.js");
+        assert.equal(
+            extractVideoDuration(`<script>var p = {"videoDetails":{"lengthSeconds":"212"}};</script>`),
+            "212"
+        );
+        assert.equal(
+            extractVideoDuration(`<script>var p = {"videoDetails":{"lengthSeconds":"abc"}};</script>`),
+            null
+        );
+        assert.equal(extractVideoDuration(`<html><body>nothing</body></html>`), null);
     });
 });
 

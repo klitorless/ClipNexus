@@ -24,6 +24,8 @@ with `WEBVTT`, plus provenance headers:
 - `X-Caption-Format` — `vtt` (passed through) or `xml` (converted)
 - `X-Video-Title` — the video's title, percent-encoded UTF-8 (omitted
   when unknown); taken from the player response's `videoDetails`
+- `X-Video-Duration` — the video's length in whole seconds, plain
+  digits (omitted when unknown); from `videoDetails.lengthSeconds`
 
 Errors are JSON shaped like `{"error": {"type": "...", "message": "..."}}`
 with types the ClipNexus client already understands:

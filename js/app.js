@@ -514,17 +514,21 @@ async function runDashboardAutoAcquisition(project, seq) {
         return;
     }
 
-    // A provider may report the video's title as a side-channel (the
-    // caption service's X-Video-Title header). Apply it through the
-    // same immutable metadata path as the Data API key flow — but only
-    // when no title has been acquired yet, so a key result is never
-    // overwritten and this never re-triggers that flow.
+    // A provider may report the video's title and/or duration as a
+    // side-channel (the caption service's X-Video-Title and
+    // X-Video-Duration headers). Apply them through the same immutable
+    // metadata path as the Data API key flow — but only when no metadata
+    // has been acquired yet, so a key result is never overwritten and
+    // this never re-triggers that flow.
     let projectForTranscript = applied.project;
-    if (typeof result.videoTitle === "string" && result.videoTitle.length > 0 &&
+    const hasTitle = typeof result.videoTitle === "string" && result.videoTitle.length > 0;
+    const hasDuration = Number.isInteger(result.videoDurationSeconds) && result.videoDurationSeconds >= 0;
+    if ((hasTitle || hasDuration) &&
         projectForTranscript.video && projectForTranscript.video.metadata.status === METADATA_STATUS.UNKNOWN) {
         projectForTranscript = withVideoMetadata(projectForTranscript, {
             status: METADATA_STATUS.LOADED,
-            title: result.videoTitle,
+            ...(hasTitle ? { title: result.videoTitle } : {}),
+            ...(hasDuration ? { durationSeconds: result.videoDurationSeconds } : {}),
             provider: result.source.providerId,
             retrievedAt: result.source.retrievedAt
         });
