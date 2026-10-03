@@ -32,8 +32,9 @@ function createStatusCard() {
         createElement(
             "p",
             "card-body",
-            "Load a YouTube video, then add its transcript — upload a file, or fetch captions " +
-            "with your own Supadata API key on the Transcripts page. Transcripts are parsed into " +
+            "Load a YouTube video — ClipNexus automatically tries its YouTube captions first, " +
+            "no API key needed. If no captions come back, add the transcript yourself: upload " +
+            "a file, or fetch it with a provider on the Transcripts page. Transcripts are parsed into " +
             "timestamped segments and validated: ordering, overlaps, and timing problems are " +
             "reported instead of hidden. The Analysis tab surfaces question patterns with " +
             "traceable evidence, and the Clip Queue pairs an embedded video player with clip " +
@@ -140,7 +141,7 @@ function createNextActionsCard(project) {
     } else if (!transcript) {
         actions.push({
             link: "#transcripts", text: "Add a transcript",
-            hint: "Upload a file or fetch captions with a provider key."
+            hint: "Upload a file or fetch captions with a provider."
         });
     } else {
         if (project.pois.length === 0) {

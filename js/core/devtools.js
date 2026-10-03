@@ -27,6 +27,7 @@ import { resolveVideoUrl } from "../video/video-resolver.js";
 import { addProjectTests, addStage17Tests } from "./devtools-project-tests.js";
 import { addProviderTests } from "./devtools-provider-tests.js";
 import { addSupadataTests } from "./devtools-supadata-tests.js";
+import { addYouTubeNativeTests } from "./devtools-youtube-native-tests.js";
 import { addAnalysisTests } from "./devtools-analysis-tests.js";
 import { addChunkingTests } from "./devtools-chunking-tests.js";
 import { addAnalyzerIntegrationTests } from "./devtools-analyzer-tests.js";
@@ -178,6 +179,10 @@ function buildTests(appState) {
 
     // Stage 2B: the first real provider (fake fetch — no network) + JSON parser.
     addSupadataTests(add);
+
+    // Stage 2C: no-key YouTube native captions + the automatic
+    // fallback chain (fake fetch — no network, no live YouTube).
+    addYouTubeNativeTests(add);
 
     // Stage 3: analysis contracts (interface only — no AI integration).
     addAnalysisTests(add);

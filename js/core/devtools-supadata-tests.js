@@ -94,12 +94,15 @@ export function addSupadataTests(add) {
 
     // ---------- Registration / request ----------
 
-    add("supadata: registered as the one real provider, needs a key", () => {
+    add("supadata: registered as an available provider, needs a key", () => {
         const registry = createDefaultProviderRegistry();
         const described = registry.list().find((item) => item.id === SUPADATA_ID);
         const real = registry.list().filter((item) => item.status === PROVIDER_STATUS.AVAILABLE);
+        // Stage 2C: YouTube native captions is available too (no key).
+        const realIds = real.map((item) => item.id).sort();
         return described && described.status === PROVIDER_STATUS.AVAILABLE && described.enabled === true &&
-            real.length === 1 && described.credential && described.credential.label === "Supadata API key" &&
+            realIds.join(",") === "supadata,youtube-native" && described.credential &&
+            described.credential.label === "Supadata API key" &&
             described.capabilities.platforms.join() === "youtube" && typeof described.getTranscript === "undefined";
     });
 

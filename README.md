@@ -47,7 +47,7 @@ Each visual below is labeled with what it represents: **CURRENT** (implemented b
 
 ![What ClipNexus does today](docs/images/v9-what-works-today.webp)
 
-Acquire (file upload or Supadata) → Parse → Validate → Chunk → Export & Analyze → provider-neutral POI extraction (canonical POI domain + deterministic mock provider; no AI extractor) → event reconciliation → ClipSpec derivation → the Clip Queue, where candidates are reviewed against the embedded player with seek, Keep, and Reject. AI editing and publishing remain planned.
+Acquire (file upload, YouTube native captions, or Supadata) → Parse → Validate → Chunk → Export & Analyze → provider-neutral POI extraction (canonical POI domain + deterministic mock provider; no AI extractor) → event reconciliation → ClipSpec derivation → the Clip Queue, where candidates are reviewed against the embedded player with seek, Keep, and Reject. AI editing and publishing remain planned.
 
 ### Roadmap: implemented vs. planned — ARCHITECTURE
 
@@ -304,11 +304,11 @@ All paths converge on the same canonical document.
 
 ---
 
-Current Provider
+Current Providers
 
-Supadata
+**YouTube native captions** (no API key) — fetches the video's existing YouTube caption track directly: manual captions are preferred, auto-generated captions are accepted, and the requested language is honored when available. It needs no credential. Known limitation: it is a direct browser fetch, so it only works where the browser is allowed to read YouTube responses — a plain static page is normally blocked by YouTube's CORS policy. When it cannot retrieve captions, the app automatically falls back to the next provider.
 
-Supadata is currently the first production transcript provider.
+**Supadata** — hosted transcript API using your own Supadata API key, entered at runtime. Still available as the authenticated provider and manual override.
 
 The provider layer supports:
 

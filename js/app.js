@@ -35,9 +35,10 @@ import { buildTranscriptDocument, buildAcquiredTranscript } from "./transcript/p
 import { chunkDocument } from "./transcript/chunker.js";
 import { exportTranscript } from "./transcript/export.js";
 import { createFileAcquisition } from "./transcript/model.js";
-import { transcriptProviders } from "./transcript/providers/default-providers.js";
+import { transcriptProviders, AUTOMATIC_PROVIDER_IDS } from "./transcript/providers/default-providers.js";
 import { providerCredentials } from "./transcript/providers/credentials.js";
-import { acquireTranscript, applyAcquisitionToProject } from "./transcript/providers/manager.js";
+import { acquireTranscript, acquireTranscriptWithFallback, applyAcquisitionToProject } from "./transcript/providers/manager.js";
+import { METHOD_PREFERENCE } from "./transcript/providers/provider.js";
 import {
     createAcquisitionState, withSelection, beginAttempt, completeAttempt, resetAttempt, isCurrentAttemptResult
 } from "./transcript/providers/acquisition-state.js";
@@ -169,6 +170,18 @@ function describeOutcome(outcome, identity) {
     return `${videoOutcomeMessages[outcome]} (${label} · ${identity.videoId})`;
 }
 
+// Outcomes that link a (possibly new) video to the project.
+const AUTO_ACQUIRE_OUTCOMES = new Set(["created", "attached", "replaced"]);
+
+// Automatic captions run only for a newly linked YouTube video with
+// no transcript yet — never over a user-uploaded transcript, and
+// never for a platform no provider supports.
+function shouldAutoAcquireTranscript(project, outcome) {
+    if (!AUTO_ACQUIRE_OUTCOMES.has(outcome)) return false;
+    const video = project ? project.video : null;
+    return Boolean(video) && video.identity.platform === "youtube" && project.transcript === null;
+}
+
 // Store the chosen project and return the notice to show.
 function commitVideoPlan(videoPlan, confirmed, identity) {
     const current = state.get("project");
@@ -180,6 +193,14 @@ function commitVideoPlan(videoPlan, confirmed, identity) {
     if (!current || next.id !== current.id) setAcquisition(resetAttempt(getAcquisition()));
     if (next !== current) state.set("project", next);
     if (next !== current) requestVideoTitle(next);
+    if (next !== current && shouldAutoAcquireTranscript(next, outcome)) {
+        // The Dashboard tries the no-key captions automatically; the
+        // notice below is replaced when the attempt finishes.
+        const acquiring = { ok: true, message: "Video found. Getting transcript…" };
+        setVideoUrlNotice(acquiring);
+        runDashboardAutoAcquisition(next, ++dashboardAcquisitionSeq);
+        return acquiring;
+    }
     return notice;
 }
 
@@ -425,6 +446,86 @@ async function handleAcquireTranscript(override = {}) {
     setAnalysis({ status: "idle" }); // Earlier analysis results described a different transcript.
     const chunked = chunkTranscriptDocument(applied.project.transcript);
     state.set("project", withTranscript(applied.project, chunked.document)); // triggers render
+    if (chunked.error) {
+        showNoticeCard("Chunking failed",
+            reportError(chunked.error, "Transcript acquisition"), "Warning", "tag");
+    }
+}
+
+// ---------- Automatic transcript acquisition (Dashboard) ----------
+//
+// After a YouTube VOD is linked on the Dashboard, the app tries the
+// no-key YouTube captions first, then the authenticated Supadata
+// provider (which runs only when its key is already in the
+// in-memory store). This is separate from the Transcripts page's
+// manual acquisition state: it never changes the user's provider
+// selection, and the Transcripts page stays the explicit override
+// surface ("Personal Supadata key").
+//
+// Stale guards: a newer video load supersedes an in-flight attempt
+// (dashboardAcquisitionSeq), and a result is applied only to the
+// project it started for. Failures never touch the project.
+
+let dashboardAcquisitionSeq = 0;
+
+// Persist the notice and, when the Dashboard is showing, update the
+// visible form message in place — a full re-render would wipe what
+// the user is typing into the URL field.
+function updateDashboardNotice(notice) {
+    setVideoUrlNotice(notice);
+    if (state.get("route") !== "dashboard") return;
+    const message = elements.content.querySelector("[data-section=\"create-project\"] .field-message");
+    if (message) {
+        message.textContent = notice.message;
+        message.classList.toggle("is-error", !notice.ok);
+    }
+}
+
+async function runDashboardAutoAcquisition(project, seq) {
+    const projectId = project.id;
+    const result = await acquireTranscriptWithFallback({
+        registry: transcriptProviders,
+        providerIds: AUTOMATIC_PROVIDER_IDS,
+        video: project.video,
+        options: { language: null, method: METHOD_PREFERENCE.ANY }
+    });
+    if (seq !== dashboardAcquisitionSeq) return;                          // superseded by a newer load
+    const current = state.get("project");
+    if (!current || current.id !== projectId || !current.video) return;   // project changed
+
+    if (!result.success) {
+        console.warn("[VOD Analyzer] Automatic transcript acquisition", result.error.code, result.error.detail);
+        updateDashboardNotice({
+            ok: false,
+            message: `Automatic captions unavailable: ${result.error.message} ` +
+                "You can upload a file or use a provider key on the Transcripts page."
+        });
+        return;
+    }
+
+    const applied = applyAcquisitionToProject(current, result, buildAcquiredTranscript);
+    if (applied.error) {
+        console.warn("[VOD Analyzer] Automatic transcript acquisition", applied.error.code, applied.error.detail);
+        updateDashboardNotice({
+            ok: false,
+            message: `Automatic captions unavailable: ${applied.error.message} ` +
+                "You can upload a file or use a provider key on the Transcripts page."
+        });
+        return;
+    }
+
+    const chunked = chunkTranscriptDocument(applied.project.transcript);
+    // state.set("project") re-renders the Dashboard: the pipeline
+    // strip and transcript summary update, and the preview player
+    // mount is re-attached (not reloaded).
+    state.set("project", withTranscript(applied.project, chunked.document));
+    setExportNotice(null);            // an earlier export notice no longer applies
+    setAnalysis({ status: "idle" });   // earlier analysis described a different transcript
+    const count = chunked.document.segments.length;
+    updateDashboardNotice({
+        ok: true,
+        message: `Transcript ready — ${count} segment${count === 1 ? "" : "s"} from ${result.source.providerName}.`
+    });
     if (chunked.error) {
         showNoticeCard("Chunking failed",
             reportError(chunked.error, "Transcript acquisition"), "Warning", "tag");

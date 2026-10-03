@@ -117,12 +117,17 @@ export function addProviderTests(add) {
 
     // ---------- Contract ----------
 
-    // Stage 2B update: Supadata is now implemented; the other stays a placeholder.
+    // Stage 2C update: YouTube native captions joins Supadata as an
+    // available provider; the Python-helper adapter stays a placeholder.
     add("contract: default providers conform and report status honestly", () => {
         const transcriptProviders = createDefaultProviderRegistry();
         const ids = transcriptProviders.list().map((item) => item.id);
-        const expected = { "supadata": PROVIDER_STATUS.AVAILABLE, "youtube-transcript-api": PROVIDER_STATUS.NOT_IMPLEMENTED };
-        return ids.includes("supadata") && ids.includes("youtube-transcript-api") &&
+        const expected = {
+            "youtube-native": PROVIDER_STATUS.AVAILABLE,
+            "supadata": PROVIDER_STATUS.AVAILABLE,
+            "youtube-transcript-api": PROVIDER_STATUS.NOT_IMPLEMENTED
+        };
+        return ids.includes("youtube-native") && ids.includes("supadata") && ids.includes("youtube-transcript-api") &&
             ids.every((id) => {
                 const { provider } = transcriptProviders.get(id);
                 return isValidProvider(provider) && Object.isFrozen(provider) &&
@@ -469,14 +474,17 @@ export function addProviderTests(add) {
 
     // UI refinement: the status card is user-facing copy — what the
     // app does and what it doesn't do yet. No internal stage names,
-    // no implementation jargon.
+    // no implementation jargon. Stage 2C: captions are attempted
+    // automatically, so the card no longer presents a Supadata key
+    // as the way to get a transcript.
     add("dashboard: status card describes the app honestly in user language", () => {
         const stubState = { get: (key) => (key === "ui" ? {} : null) };
         const mount = renderDetached((element) =>
             renderDashboard(element, stubState, { onVideoUrlSubmit: () => ({ ok: true, message: "" }) }));
         const text = mount.textContent;
         return text.includes("What ClipNexus does") &&
-            text.includes("your own Supadata API key") &&
+            text.includes("automatically tries its YouTube captions") &&
+            text.includes("no API key needed") &&
             text.includes("Clip Queue") && text.includes("Keep") &&
             text.includes("Not built yet") &&
             !text.includes("Stage 4 — Application Integration") &&

@@ -91,6 +91,50 @@ export async function acquireTranscript({ registry, providerId, video, options =
 }
 
 /**
+ * Try several providers in order and return the first success.
+ * Unlike acquireTranscript (manual switching only), this is the
+ * AUTOMATIC path: the Dashboard tries the no-key provider first
+ * and falls back to the authenticated one. Provenance still names
+ * the provider that actually supplied the transcript, because
+ * each attempt is normalized independently.
+ *
+ * When every provider fails, the LAST error is returned (it is
+ * usually the most actionable — e.g. CREDENTIAL_REQUIRED after
+ * an unreachable no-key provider), annotated with
+ * detail.attemptedProviders. Nothing is retried and no state is
+ * touched here; applying a result to a project stays with
+ * applyAcquisitionToProject().
+ *
+ * @param {object} request
+ * @param {object} request.registry     from registry.js
+ * @param {string[]} request.providerIds  tried in order
+ * @param {object|null} request.video   project.video (Stage 1.6 Video)
+ * @param {{language?:string|null, method?:string}} [request.options]
+ * @param {number} [request.timeoutMs]
+ * @returns {Promise<object>} frozen AcquisitionResult
+ */
+export async function acquireTranscriptWithFallback({ registry, providerIds, video, options = {}, timeoutMs = DEFAULT_TIMEOUT_MS }) {
+    const ids = Array.isArray(providerIds) ? providerIds.filter((id) => typeof id === "string") : [];
+    if (ids.length === 0) {
+        return createAcquisitionFailure(CODES.INVALID_REQUEST,
+            { providerId: null, detail: { reason: "no providers to try" } });
+    }
+    let last = null;
+    for (const providerId of ids) {
+        const result = await acquireTranscript({ registry, providerId, video, options, timeoutMs });
+        if (result.success) return result;
+        last = result;
+        // A missing video fails every provider the same way; stop early.
+        if (result.error && result.error.code === CODES.INVALID_REQUEST) break;
+    }
+    const error = last.error;
+    return createAcquisitionFailure(error.code, {
+        providerId: error.providerId,
+        detail: { ...error.detail, attemptedProviders: [...ids] }
+    });
+}
+
+/**
  * Pure: decide the project after an attempt.
  *   failure            → the SAME project object (transcript untouched)
  *   result for a different video than the project's → unchanged + error
