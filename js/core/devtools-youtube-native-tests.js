@@ -364,7 +364,7 @@ export function addYouTubeNativeTests(add) {
             nativeCalls.length === 1 && supadataCalls.length === 0;
     });
 
-    add("fallback: all providers failing returns the last error with attemptedProviders", async () => {
+    add("fallback: Supadata CREDENTIAL_REQUIRED does not hide the youtube-native failure", async () => {
         const credentials = createCredentialStore();   // no key → Supadata reports CREDENTIAL_REQUIRED
         const native = createYouTubeNativeProvider({
             fetchImpl: async () => { throw new TypeError("blocked"); }
@@ -376,9 +376,59 @@ export function addYouTubeNativeTests(add) {
         const result = await acquireTranscriptWithFallback({
             registry, providerIds: [YOUTUBE_NATIVE_ID, SUPADATA_ID], video: projectFor().video, options: {}
         });
-        return result.success === false && result.error.code === "CREDENTIAL_REQUIRED" &&
+        return result.success === false && result.error.code === "PROVIDER_UNAVAILABLE" &&
+            result.error.providerId === YOUTUBE_NATIVE_ID &&
             Array.isArray(result.error.detail.attemptedProviders) &&
-            result.error.detail.attemptedProviders.join(",") === `${YOUTUBE_NATIVE_ID},${SUPADATA_ID}`;
+            result.error.detail.attemptedProviders.join(",") === `${YOUTUBE_NATIVE_ID},${SUPADATA_ID}` &&
+            Array.isArray(result.error.detail.credentialRequiredProviders) &&
+            result.error.detail.credentialRequiredProviders.join(",") === SUPADATA_ID;
+    });
+
+    add("fallback: youtube-native TRANSCRIPT_UNAVAILABLE stays visible when Supadata needs a key", async () => {
+        const credentials = createCredentialStore();   // no key → Supadata reports CREDENTIAL_REQUIRED
+        const native = createYouTubeNativeProvider({
+            fetchImpl: async () => reply(404, workerError("transcript-unavailable"))
+        });
+        const supadataProvider = createSupadataProvider({
+            fetchImpl: fakeFetch([reply(200, SUPADATA_BODY)]).fetchImpl, credentials, sleep: async () => {}
+        });
+        const registry = createProviderRegistry([native, supadataProvider]);
+        const result = await acquireTranscriptWithFallback({
+            registry, providerIds: [YOUTUBE_NATIVE_ID, SUPADATA_ID], video: projectFor().video, options: {}
+        });
+        return result.success === false && result.error.code === "TRANSCRIPT_UNAVAILABLE" &&
+            result.error.providerId === YOUTUBE_NATIVE_ID && result.error.retryable === false;
+    });
+
+    add("fallback: when no provider attempted, the last CREDENTIAL_REQUIRED is returned", async () => {
+        const credentials = createCredentialStore();   // no key anywhere
+        const supadataProvider = createSupadataProvider({
+            fetchImpl: fakeFetch([reply(200, SUPADATA_BODY)]).fetchImpl, credentials, sleep: async () => {}
+        });
+        const registry = createProviderRegistry([supadataProvider]);
+        const result = await acquireTranscriptWithFallback({
+            registry, providerIds: [SUPADATA_ID], video: projectFor().video, options: {}
+        });
+        return result.success === false && result.error.code === "CREDENTIAL_REQUIRED" &&
+            result.error.providerId === SUPADATA_ID;
+    });
+
+    add("fallback: a later attempted failure still wins over an earlier one", async () => {
+        const credentials = createCredentialStore();
+        credentials.set(SUPADATA_ID, TEST_KEY);
+        const native = createYouTubeNativeProvider({
+            fetchImpl: async () => reply(404, workerError("transcript-unavailable"))
+        });
+        const supadataProvider = createSupadataProvider({
+            fetchImpl: async () => reply(401, { error: "unauthorized" }),
+            credentials, sleep: async () => {}
+        });
+        const registry = createProviderRegistry([native, supadataProvider]);
+        const result = await acquireTranscriptWithFallback({
+            registry, providerIds: [YOUTUBE_NATIVE_ID, SUPADATA_ID], video: projectFor().video, options: {}
+        });
+        return result.success === false && result.error.code === "AUTHENTICATION_FAILED" &&
+            result.error.providerId === SUPADATA_ID;
     });
 
     add("fallback: no video → INVALID_REQUEST without any request", async () => {

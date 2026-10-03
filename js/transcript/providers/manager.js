@@ -98,11 +98,16 @@ export async function acquireTranscript({ registry, providerId, video, options =
  * the provider that actually supplied the transcript, because
  * each attempt is normalized independently.
  *
- * When every provider fails, the LAST error is returned (it is
- * usually the most actionable — e.g. CREDENTIAL_REQUIRED after
- * an unreachable no-key provider), annotated with
- * detail.attemptedProviders. Nothing is retried and no state is
- * touched here; applying a result to a project stays with
+ * When every provider fails, the most recent failure from a provider
+ * that actually ATTEMPTED the request is returned, annotated with
+ * detail.attemptedProviders. A provider that fails only for lack of
+ * a credential (CREDENTIAL_REQUIRED, raised before any network
+ * request) never hides such a meaningful failure; the providers
+ * that needed a key are listed in
+ * detail.credentialRequiredProviders instead. When no provider
+ * attempted (e.g. every provider needed a key), the last error is
+ * returned as before. Nothing is retried and no state is touched
+ * here; applying a result to a project stays with
  * applyAcquisitionToProject().
  *
  * @param {object} request
@@ -120,17 +125,32 @@ export async function acquireTranscriptWithFallback({ registry, providerIds, vid
             { providerId: null, detail: { reason: "no providers to try" } });
     }
     let last = null;
+    let lastAttempted = null;      // most recent failure from a provider that actually tried
+    const credentialRequired = []; // providers that failed only for lack of a credential
     for (const providerId of ids) {
         const result = await acquireTranscript({ registry, providerId, video, options, timeoutMs });
         if (result.success) return result;
         last = result;
+        // CREDENTIAL_REQUIRED is raised before any network request, so a
+        // provider failing only for a missing key must not hide the
+        // meaningful failure of a provider that actually attempted.
+        if (result.error && result.error.code === CODES.CREDENTIAL_REQUIRED) {
+            credentialRequired.push(providerId);
+        } else {
+            lastAttempted = result;
+        }
         // A missing video fails every provider the same way; stop early.
         if (result.error && result.error.code === CODES.INVALID_REQUEST) break;
     }
-    const error = last.error;
+    const chosen = lastAttempted || last;
+    const error = chosen.error;
     return createAcquisitionFailure(error.code, {
         providerId: error.providerId,
-        detail: { ...error.detail, attemptedProviders: [...ids] }
+        detail: {
+            ...error.detail,
+            attemptedProviders: [...ids],
+            ...(credentialRequired.length > 0 ? { credentialRequiredProviders: [...credentialRequired] } : {})
+        }
     });
 }
 
