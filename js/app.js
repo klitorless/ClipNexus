@@ -514,11 +514,27 @@ async function runDashboardAutoAcquisition(project, seq) {
         return;
     }
 
-    const chunked = chunkTranscriptDocument(applied.project.transcript);
+    // A provider may report the video's title as a side-channel (the
+    // caption service's X-Video-Title header). Apply it through the
+    // same immutable metadata path as the Data API key flow — but only
+    // when no title has been acquired yet, so a key result is never
+    // overwritten and this never re-triggers that flow.
+    let projectForTranscript = applied.project;
+    if (typeof result.videoTitle === "string" && result.videoTitle.length > 0 &&
+        projectForTranscript.video && projectForTranscript.video.metadata.status === METADATA_STATUS.UNKNOWN) {
+        projectForTranscript = withVideoMetadata(projectForTranscript, {
+            status: METADATA_STATUS.LOADED,
+            title: result.videoTitle,
+            provider: result.source.providerId,
+            retrievedAt: result.source.retrievedAt
+        });
+    }
+
+    const chunked = chunkTranscriptDocument(projectForTranscript.transcript);
     // state.set("project") re-renders the Dashboard: the pipeline
     // strip and transcript summary update, and the preview player
     // mount is re-attached (not reloaded).
-    state.set("project", withTranscript(applied.project, chunked.document));
+    state.set("project", withTranscript(projectForTranscript, chunked.document));
     setExportNotice(null);            // an earlier export notice no longer applies
     setAnalysis({ status: "idle" });   // earlier analysis described a different transcript
     const count = chunked.document.segments.length;

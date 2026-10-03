@@ -52,7 +52,18 @@ const USER_AGENT =
     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
 const EXPOSED_CAPTION_HEADERS =
-    "X-Caption-Language, X-Caption-Generated, X-Caption-Source, X-Caption-Format";
+    "X-Caption-Language, X-Caption-Generated, X-Caption-Source, X-Caption-Format, X-Video-Title";
+
+// Video titles travel as a response header (percent-encoded UTF-8,
+// since HTTP headers are Latin-1). Truncated to keep headers small.
+const MAX_TITLE_LENGTH = 300;
+
+function encodeVideoTitle(title) {
+    if (typeof title !== "string") return null;
+    const trimmed = title.trim();
+    if (!trimmed) return null;
+    return encodeURIComponent(trimmed.slice(0, MAX_TITLE_LENGTH));
+}
 
 // --- Response helpers: CORS is applied here, so no response path
 // can accidentally omit it. -------------------------------------
@@ -71,17 +82,16 @@ export function jsonError(type, message, status) {
 
 /** Successful caption response, with provenance headers exposed. */
 export function vttResponse(body, meta) {
-    return new Response(body, {
-        status: 200,
-        headers: corsHeaders({
-            "Content-Type": "text/vtt; charset=utf-8",
-            "Access-Control-Expose-Headers": EXPOSED_CAPTION_HEADERS,
-            "X-Caption-Language": meta.language,
-            "X-Caption-Generated": meta.generated ? "true" : "false",
-            "X-Caption-Source": meta.source,
-            "X-Caption-Format": meta.format
-        })
+    const headers = corsHeaders({
+        "Content-Type": "text/vtt; charset=utf-8",
+        "Access-Control-Expose-Headers": EXPOSED_CAPTION_HEADERS,
+        "X-Caption-Language": meta.language,
+        "X-Caption-Generated": meta.generated ? "true" : "false",
+        "X-Caption-Source": meta.source,
+        "X-Caption-Format": meta.format
     });
+    if (meta.videoTitle) headers["X-Video-Title"] = meta.videoTitle;
+    return new Response(body, { status: 200, headers });
 }
 
 /** CORS preflight response. */
@@ -296,7 +306,10 @@ async function captionTracksViaInnerTube(videoId, fetchImpl, timeoutMs) {
     const tracks = data && data.captions && data.captions.playerCaptionsTracklistRenderer
         ? data.captions.playerCaptionsTracklistRenderer.captionTracks
         : null;
-    return { tracks: Array.isArray(tracks) ? tracks : null };
+    const title = data && data.videoDetails && typeof data.videoDetails.title === "string"
+        ? data.videoDetails.title
+        : null;
+    return { tracks: Array.isArray(tracks) ? tracks : null, title };
 }
 
 /** Mechanism B: watch-page fallback. Same result shape as mechanism A. */
@@ -318,13 +331,33 @@ async function captionTracksViaWatchPage(videoId, fetchImpl, timeoutMs) {
     if (!res.ok) return { httpStatus: res.status };
     const html = await res.text();
     const raw = extractJsonValue(html, '"captionTracks":');
-    if (raw === null) return { tracks: null };
+    if (raw === null) return { tracks: null, title: extractVideoTitle(html) };
+    let title = extractVideoTitle(html);
     try {
         const parsed = JSON.parse(raw);
-        return { tracks: Array.isArray(parsed) ? parsed : null };
+        return { tracks: Array.isArray(parsed) ? parsed : null, title };
     } catch {
-        return { malformed: true };
+        return { malformed: true, title };
     }
+}
+
+/** Best-effort video title from a watch-page HTML document. */
+export function extractVideoTitle(html) {
+    const raw = extractJsonValue(html, '"videoDetails":');
+    if (raw !== null) {
+        try {
+            const details = JSON.parse(raw);
+            if (details && typeof details.title === "string" && details.title.trim()) {
+                return details.title;
+            }
+        } catch { /* fall through to meta/title tags */ }
+    }
+    const meta = String(html).match(/<meta[^>]+name=["']title["'][^>]+content=["']([^"']+)["']/i) ||
+        String(html).match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']title["']/i);
+    if (meta) return meta[1];
+    const tag = String(html).match(/<title>([^<]+)<\/title>/i);
+    if (tag) return tag[1].replace(/\s*-\s*YouTube\s*$/i, "");
+    return null;
 }
 
 async function fetchWithTimeout(fetchImpl, url, init = {}, timeoutMs = FETCH_TIMEOUT_MS) {
@@ -378,11 +411,13 @@ export function createRequestHandler({ fetchImpl = fetch, timeoutMs = FETCH_TIME
         let tracks = null;
         let mechanism = null;
         let softFailure = null;
+        let videoTitle = null;
         try {
             const inner = await captionTracksViaInnerTube(videoId, fetchImpl, timeoutMs);
             if (inner.rateLimited) softFailure = "rate-limited";
             else if (inner.tracks) { tracks = inner.tracks; mechanism = "innertube"; }
             else if (inner.malformed || inner.httpStatus) softFailure = "retrieval-failure";
+            if (inner.title) videoTitle = inner.title;
         } catch (err) {
             softFailure = isTimeoutError(err) ? "timeout" : "retrieval-failure";
         }
@@ -392,6 +427,7 @@ export function createRequestHandler({ fetchImpl = fetch, timeoutMs = FETCH_TIME
                 if (page.rateLimited) softFailure = "rate-limited";
                 else if (page.tracks) { tracks = page.tracks; mechanism = "watch-page"; }
                 else if (!softFailure) softFailure = "transcript-unavailable";
+                if (!videoTitle && page.title) videoTitle = page.title;
             } catch (err) {
                 if (!softFailure) softFailure = isTimeoutError(err) ? "timeout" : "retrieval-failure";
             }
@@ -481,7 +517,8 @@ export function createRequestHandler({ fetchImpl = fetch, timeoutMs = FETCH_TIME
             language: track.languageCode,
             generated: !isManual(track),
             source: mechanism || "unknown",
-            format: sourceFormat
+            format: sourceFormat,
+            videoTitle: encodeVideoTitle(videoTitle)
         });
     };
 }

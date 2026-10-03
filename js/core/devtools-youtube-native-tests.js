@@ -169,6 +169,36 @@ export function addYouTubeNativeTests(add) {
             result.source.generated === true && result.source.language === "ko";
     });
 
+    add("youtube-native: X-Video-Title header surfaces as decoded videoTitle", async () => {
+        const { registry } = setup([reply(200, SAMPLE_VTT, vttHeaders({
+            "X-Video-Title": encodeURIComponent("Never Gonna Give You Up")
+        }))]);
+        const result = await acquire(registry, projectFor());
+        return result.success === true && result.videoTitle === "Never Gonna Give You Up";
+    });
+
+    add("youtube-native: unicode video titles decode correctly", async () => {
+        const { registry } = setup([reply(200, SAMPLE_VTT, vttHeaders({
+            "X-Video-Title": encodeURIComponent("café ☕ & <friends>")
+        }))]);
+        const result = await acquire(registry, projectFor());
+        return result.success === true && result.videoTitle === "café ☕ & <friends>";
+    });
+
+    add("youtube-native: missing X-Video-Title → videoTitle is null", async () => {
+        const { registry } = setup([reply(200, SAMPLE_VTT, vttHeaders())]);
+        const result = await acquire(registry, projectFor());
+        return result.success === true && result.videoTitle === null;
+    });
+
+    add("youtube-native: malformed X-Video-Title encoding → videoTitle is null", async () => {
+        const { registry } = setup([reply(200, SAMPLE_VTT, vttHeaders({
+            "X-Video-Title": "%E0%A4%A"   // truncated percent-encoding
+        }))]);
+        const result = await acquire(registry, projectFor());
+        return result.success === true && result.videoTitle === null;
+    });
+
     add("youtube-native: method native with only auto-generated captions → TRANSCRIPT_UNAVAILABLE", async () => {
         const { registry } = setup([reply(200, SAMPLE_VTT, vttHeaders({ "X-Caption-Generated": "true" }))]);
         const result = await acquire(registry, projectFor(), { method: "native" });

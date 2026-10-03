@@ -36,7 +36,9 @@ const SAMPLE_XML =
 const SAMPLE_VTT = "WEBVTT\n\n00:00:01.360 --> 00:00:03.040\nNever gonna give you up\n";
 
 // Build a mock fetch. routes: { innertube: <tracks|null|"429"|"timeout">,
-// watchPage: <tracks|null>, trackBody: <string>, trackStatus: <number> }.
+// watchPage: <tracks|null>, videoTitle: <string|null> (innertube
+// videoDetails.title), watchTitle: <string|null> (watch-page title),
+// trackBody: <string>, trackStatus: <number> }.
 // Captures every requested URL in calls[].
 function mockFetch(routes) {
     const calls = [];
@@ -54,13 +56,17 @@ function mockFetch(routes) {
             return Response.json({
                 captions: tracks
                     ? { playerCaptionsTracklistRenderer: { captionTracks: tracks } }
-                    : {}
+                    : {},
+                ...(routes.videoTitle ? { videoDetails: { title: routes.videoTitle } } : {})
             });
         }
         if (u.startsWith("https://www.youtube.com/watch")) {
             const tracks = routes.watchPage ?? null;
+            const details = routes.watchTitle
+                ? `"videoDetails":{"videoId":"${VID}","title":${JSON.stringify(routes.watchTitle)}},`
+                : "";
             const html = tracks
-                ? `<html><script>var x = {"captionTracks":${JSON.stringify(tracks)}};</script></html>`
+                ? `<html><head><title>${routes.watchTitle || "t"} - YouTube</title></head><script>var x = {${details}"captionTracks":${JSON.stringify(tracks)}};</script></html>`
                 : "<html><body>no captions here</body></html>";
             return new Response(html, { headers: { "Content-Type": "text/html" } });
         }
@@ -252,10 +258,67 @@ describe("caption body and headers", () => {
             `/youtube-transcript?v=${VID}`
         );
         const exposed = res.headers.get("Access-Control-Expose-Headers") || "";
-        for (const h of ["X-Caption-Language", "X-Caption-Generated", "X-Caption-Source", "X-Caption-Format"]) {
+        for (const h of ["X-Caption-Language", "X-Caption-Generated", "X-Caption-Source", "X-Caption-Format", "X-Video-Title"]) {
             assert.ok(exposed.includes(h), `exposed headers must include ${h}`);
         }
         assert.equal(res.headers.get("Access-Control-Allow-Origin"), "*");
+    });
+});
+
+describe("video title header", () => {
+    it("emits X-Video-Title from the InnerTube player response", async () => {
+        const res = await get(
+            handlerFor({ innertube: [EN_MANUAL], videoTitle: "Never Gonna Give You Up", trackBody: SAMPLE_VTT }),
+            `/youtube-transcript?v=${VID}`
+        );
+        assert.equal(res.status, 200);
+        assert.equal(decodeURIComponent(res.headers.get("X-Video-Title")), "Never Gonna Give You Up");
+    });
+
+    it("percent-encodes unicode titles so the header stays valid", async () => {
+        const res = await get(
+            handlerFor({ innertube: [EN_MANUAL], videoTitle: "café ☕ & <friends>", trackBody: SAMPLE_VTT }),
+            `/youtube-transcript?v=${VID}`
+        );
+        const raw = res.headers.get("X-Video-Title");
+        assert.ok(raw && !/[^\x00-\x7F]/.test(raw), "header must be ASCII");
+        assert.equal(decodeURIComponent(raw), "café ☕ & <friends>");
+    });
+
+    it("falls back to the watch-page title when InnerTube has none", async () => {
+        const res = await get(
+            handlerFor({ innertube: null, watchPage: [EN_ASR], watchTitle: "Watch Page Title", trackBody: SAMPLE_VTT }),
+            `/youtube-transcript?v=${VID}`
+        );
+        assert.equal(res.status, 200);
+        assert.equal(res.headers.get("X-Caption-Source"), "watch-page");
+        assert.equal(decodeURIComponent(res.headers.get("X-Video-Title")), "Watch Page Title");
+    });
+
+    it("omits X-Video-Title when no title is available", async () => {
+        const res = await get(
+            handlerFor({ innertube: [EN_MANUAL], trackBody: SAMPLE_VTT }),
+            `/youtube-transcript?v=${VID}`
+        );
+        assert.equal(res.status, 200);
+        assert.equal(res.headers.get("X-Video-Title"), null);
+    });
+
+    it("extractVideoTitle reads videoDetails, meta, and title tags", async () => {
+        const { extractVideoTitle } = await import("../src/index.js");
+        assert.equal(
+            extractVideoTitle(`<script>var p = {"videoDetails":{"videoId":"x","title":"Details Title"}};</script>`),
+            "Details Title"
+        );
+        assert.equal(
+            extractVideoTitle(`<head><meta name="title" content="Meta Title"></head>`),
+            "Meta Title"
+        );
+        assert.equal(
+            extractVideoTitle(`<head><title>Tag Title - YouTube</title></head>`),
+            "Tag Title"
+        );
+        assert.equal(extractVideoTitle(`<html><body>nothing</body></html>`), null);
     });
 });
 

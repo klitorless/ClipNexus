@@ -22,6 +22,8 @@ with `WEBVTT`, plus provenance headers:
 - `X-Caption-Generated` — `true` for auto-generated, `false` for manual
 - `X-Caption-Source` — `innertube` or `watch-page`
 - `X-Caption-Format` — `vtt` (passed through) or `xml` (converted)
+- `X-Video-Title` — the video's title, percent-encoded UTF-8 (omitted
+  when unknown); taken from the player response's `videoDetails`
 
 Errors are JSON shaped like `{"error": {"type": "...", "message": "..."}}`
 with types the ClipNexus client already understands:

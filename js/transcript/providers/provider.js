@@ -22,6 +22,7 @@
 // ---- AdapterResponse (what an adapter returns) ----
 //   { success: true,
 //     transcript: { rawText: string, format: "txt"|"srt"|"vtt"|"json" },
+//     videoTitle?: string|null,   // optional side-channel (NOT provenance)
 //     source: { method: "native"|"generated"|"unknown",
 //               language: string|null, sourceId: string|null } }
 //   { success: false, error: { code: <ACQUISITION_ERROR_CODES>, detail?: {} } }
@@ -179,9 +180,17 @@ export function normalizeAdapterResponse(response, { provider, video, options, r
         ? source.method : ACQUISITION_METHOD.UNKNOWN;
     const language = isValidLanguageCode(source.language) ? source.language : null;
     const sourceId = typeof source.sourceId === "string" && source.sourceId.length <= 200 ? source.sourceId : null;
+    // Optional side-channel: a provider may report the video's title
+    // (e.g. the caption service's X-Video-Title header). It is NOT
+    // provenance — the caller decides whether to apply it to the
+    // project's video metadata.
+    const videoTitle = typeof response.videoTitle === "string" && response.videoTitle.trim().length > 0
+        ? response.videoTitle.slice(0, 500)
+        : null;
 
     return deepFreeze({
         success: true,
+        videoTitle,
         source: {
             providerId: provider.id,
             providerName: provider.name,

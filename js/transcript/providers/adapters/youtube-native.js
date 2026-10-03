@@ -103,6 +103,19 @@ function headerValue(headers, name) {
     return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+// The service may also report the video's title (percent-encoded
+// UTF-8 in X-Video-Title, since HTTP headers are Latin-1). Decodes
+// to a usable string, or null when absent/unusable.
+function decodeVideoTitle(value) {
+    if (typeof value !== "string" || value.length === 0) return null;
+    try {
+        const decoded = decodeURIComponent(value);
+        return decoded.trim().length > 0 ? decoded : null;
+    } catch {
+        return null;
+    }
+}
+
 // The service's { error: { type, message } } body → its type, or
 // null when the body is not that shape. The human-readable
 // message is untrusted service text and is never kept.
@@ -189,6 +202,7 @@ export function createYouTubeNativeProvider({ fetchImpl, requestDeadlineMs, capt
                 return {
                     success: true,
                     transcript: { rawText: body, format: "vtt" },
+                    videoTitle: decodeVideoTitle(headerValue(response.headers, "X-Video-Title")),
                     source: {
                         method,
                         language: headerValue(response.headers, "X-Caption-Language"),
