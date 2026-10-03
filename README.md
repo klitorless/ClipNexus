@@ -306,7 +306,7 @@ All paths converge on the same canonical document.
 
 Current Providers
 
-**YouTube native captions** (no API key) — fetches the video's existing YouTube caption track directly: manual captions are preferred, auto-generated captions are accepted, and the requested language is honored when available. It needs no credential. Known limitation: it is a direct browser fetch, so it only works where the browser is allowed to read YouTube responses — a plain static page is normally blocked by YouTube's CORS policy. When it cannot retrieve captions, the app automatically falls back to the next provider.
+**YouTube native captions** (no API key) — fetches the video's existing YouTube captions through the ClipNexus caption service: the app sends only the video ID to the configured service URL, which returns the captions as WebVTT. No user API key is required when YouTube captions are available. The service picks the track itself (manual captions preferred, auto-generated accepted); the app always reports the language and native/generated status the service actually returned. Supadata remains the automatic fallback when the service has no captions for the video or cannot be reached. The current caption service is a POC/development endpoint (`clipnexus-youtube-caption-test`, a Cloudflare Worker); the service URL lives in one place — `YOUTUBE_CAPTION_SERVICE_URL` in `js/transcript/providers/adapters/youtube-native.js` — so pointing the provider at a production backend later needs no other changes.
 
 **Supadata** — hosted transcript API using your own Supadata API key, entered at runtime. Still available as the authenticated provider and manual override.
 
@@ -1100,7 +1100,7 @@ Every `TranscriptDocument` has one `acquisition` record with the same shape for 
 
 `detail` (console only) holds structural facts such as `httpStatus`, Supadata's error code, a fixed reason, the deadline, or the `jobId`. It never holds Supadata's message text, and neither the message nor the key is ever shown or stored. Without a key, the request check fails with `CREDENTIAL_REQUIRED` and nothing is sent.
 
-**Network statement.** The only external request this app ever makes is the Supadata transcript request (plus polling for the same job), sent after you tap Get Transcript. A Content-Security-Policy in `index.html` enforces this: `connect-src 'self' https://api.supadata.ai`, and no third-party scripts, styles, fonts, or images.
+**Network statement.** The app's external requests are: the Supadata transcript request (plus polling for the same job), sent after you tap Get Transcript; the YouTube Data API title request, sent only when you supply a key for it; and the no-key caption-service request (`GET` the configured service URL with the video ID), sent automatically when you load a YouTube VOD. A Content-Security-Policy in `index.html` enforces this: `connect-src 'self' https://api.supadata.ai https://www.googleapis.com https://clipnexus-youtube-caption-test.klitorless.workers.dev`, and no third-party scripts, styles, fonts, or images.
 
 **Tradeoff.** Calling Supadata straight from the browser is fine for a single user with their own key. A shared or multi-user deployment should put a small server-side proxy in front of it so the key never reaches browsers. The adapter would then point at that proxy, and nothing else would need to change.
 
@@ -1316,7 +1316,7 @@ Stage 2B was also checked by hand against the live Supadata API with a real key.
 
 - Files are read locally with `File.text()` and kept in memory only.
 - No analytics, tracking, telemetry, or third-party scripts. Video URLs are resolved locally and never fetched.
-- The only external request is the Supadata transcript request (and polling for its job), made after you tap Get Transcript with your own key. The CSP in `index.html` allows connections only to the app itself and `https://api.supadata.ai`.
+- The external requests are the Supadata transcript request (and polling for its job), made after you tap Get Transcript with your own key; the YouTube Data API title request, made only with a key you supply; and the no-key caption-service request, which sends only the video ID to the configured public service URL. The CSP in `index.html` allows connections only to the app itself, `https://api.supadata.ai`, `https://www.googleapis.com`, and the caption-service Worker host.
 - API keys are held in memory only and never saved, logged, rendered, or committed. Supadata's error text is never shown.
 - Supadata receives the canonical YouTube URL and your key. Its own privacy policy applies to that request. Provider names, errors, and provenance are rendered with `textContent`. Provider error text is never shown, only the fixed message for its code.
 - Video URL input is untrusted. It is parsed with `new URL()`, only `http(s)` is accepted, and it is displayed with `textContent`. No links, images, or iframes are created from it.

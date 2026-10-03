@@ -447,13 +447,17 @@ export function addSupadataTests(add) {
     // Video titles: connect-src additionally allows the YouTube Data
     // API host (www.googleapis.com) — the only host that ever receives
     // the user-supplied API key, and only for title metadata.
-    add("security: CSP allows only the app, api.supadata.ai, the YouTube Data API, and the YouTube player frame", () => {
+    // Caption service: connect-src additionally allows the ClipNexus
+    // caption-service Worker host — the youtube-native provider's
+    // only network destination. The URL is public configuration,
+    // not a secret.
+    add("security: CSP allows only the app, api.supadata.ai, the YouTube Data API, the caption service, and the YouTube player frame", () => {
         const meta = document.querySelector("meta[http-equiv='Content-Security-Policy']");
         if (!meta) return false;
         const policy = meta.content;
         const directive = (name) => policy.split(";").map((part) => part.trim())
             .find((part) => part.startsWith(name));
-        return directive("connect-src") === "connect-src 'self' https://api.supadata.ai https://www.googleapis.com" &&
+        return directive("connect-src") === "connect-src 'self' https://api.supadata.ai https://www.googleapis.com https://clipnexus-youtube-caption-test.klitorless.workers.dev" &&
             directive("frame-src") === "frame-src https://www.youtube-nocookie.com" &&
             policy.includes("script-src 'self'") && policy.includes("default-src 'none'") &&
             !policy.includes("*");

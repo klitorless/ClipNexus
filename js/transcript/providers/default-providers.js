@@ -11,10 +11,10 @@ import { createYouTubeNativeProvider, YOUTUBE_NATIVE_ID } from "./adapters/youtu
 import { providerCredentials } from "./credentials.js";
 import { provider as youtubeTranscriptApi } from "./adapters/youtube-transcript-api.js";
 
-// The no-key provider (Stage 2C): real fetch, no credential. It tries
-// YouTube's own caption tracks directly; where the browser cannot
-// read YouTube responses it reports PROVIDER_UNAVAILABLE and the
-// app falls back to the next provider.
+// The no-key provider: real fetch, no credential. It asks the
+// ClipNexus caption service (a Cloudflare Worker) for the video's
+// YouTube captions; where the service is unreachable it reports
+// PROVIDER_UNAVAILABLE and the app falls back to the next provider.
 const youtubeNative = createYouTubeNativeProvider({
     fetchImpl: (url, init) => globalThis.fetch(url, init)
 });
