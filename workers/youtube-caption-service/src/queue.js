@@ -31,8 +31,19 @@ export const MAX_BACKLOG = 100;
 // adaptive throttling — not a YouTube-published number.
 export const USER_SLOT_MS = 600000;
 export const USER_SLOT_KV_TTL = 3600;
-// Longest single retry delay the consumer will request while
-// waiting for a user's slot to open (11 min > 10 min slot).
+// Queue-processing cadence: a job waiting for its user's
+// 10-minute slot is reconsidered approximately every 3
+// minutes (one "processing opportunity" per cadence) instead
+// of sleeping the whole remaining slot in a single delay.
+// This paces the handling/release of WAITING jobs only:
+// each waiting job carries its own delay, eligible jobs
+// still process immediately on delivery, and different
+// users' jobs are never serialized behind a global timer.
+// Actual redelivery is ~180s plus Cloudflare's scheduling
+// jitter — approximately 3 minutes, never exact.
+export const SLOT_WAIT_CADENCE_S = 180;
+// Safety cap above the cadence for any single slot-wait
+// retry delay (11 min > 10 min slot).
 export const MAX_SLOT_RETRY_DELAY_S = 660;
 // Fallback per-job processing estimate (ms) until measured
 // averages exist. Reported wait times are always estimates.
@@ -352,12 +363,17 @@ async function processJobMessageInner(message, { store, retrieve, msg }) {
     }
 
     // Fair-use slot: never process before the user's
-    // 10-minute slot opens. Requeue with a delay instead of
-    // burning an attempt or touching the counter — this is
-    // waiting, not failing.
+    // 10-minute slot opens. Requeue at the ~3-minute
+    // processing cadence instead of burning an attempt or
+    // touching the counter — this is waiting, not failing.
     if (typeof record.notBefore === "number" && Date.now() < record.notBefore) {
         const waitSeconds = Math.ceil((record.notBefore - Date.now()) / 1000);
-        msg.retry({ delaySeconds: Math.min(Math.max(waitSeconds, 1), MAX_SLOT_RETRY_DELAY_S) });
+        const delaySeconds = Math.min(
+            Math.max(waitSeconds, 1),
+            SLOT_WAIT_CADENCE_S,
+            MAX_SLOT_RETRY_DELAY_S
+        );
+        msg.retry({ delaySeconds });
         return { outcome: "slot-wait" };
     }
 

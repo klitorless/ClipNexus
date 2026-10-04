@@ -15,7 +15,8 @@ import {
     hashClientIp,
     JOB_STATUS,
     MAX_BACKLOG,
-    USER_SLOT_MS
+    USER_SLOT_MS,
+    SLOT_WAIT_CADENCE_S
 } from "../src/queue.js";
 
 const VID = "dQw4w9WgXcQ";
@@ -523,8 +524,9 @@ describe("per-user fair-use slots (1 request per 10 minutes)", () => {
         );
         assert.equal(result.outcome, "slot-wait");
         assert.equal(msg.acked, false);
-        assert.ok(msg.retried && msg.retried.delaySeconds > 500);
-        assert.ok(msg.retried.delaySeconds <= 660);
+        // ~3-minute processing cadence: the job is reconsidered
+        // at the cadence, not put to sleep for the whole slot.
+        assert.equal(msg.retried.delaySeconds, SLOT_WAIT_CADENCE_S);
         const record = await getJob(env.JOB_STORE, job.id);
         assert.equal(record.attempts, 0);
         assert.equal(record.status, JOB_STATUS.QUEUED);
@@ -552,5 +554,145 @@ describe("per-user fair-use slots (1 request per 10 minutes)", () => {
         assert.equal(typeof status.notBefore, "number");
         assert.ok(status.slotWaitSeconds > 500);
         assert.ok(status.estimatedWaitSeconds >= status.slotWaitSeconds);
+    });
+});
+
+describe("queue processing cadence (~3 minutes)", () => {
+    async function waitingJob(env, waitMs) {
+        const { job } = await (await postJobAs({ v: VID }, env, "203.0.113.7")).json();
+        const raw = JSON.parse(env.JOB_STORE.data.get(`job:${job.id}`));
+        raw.notBefore = Date.now() + waitMs;
+        env.JOB_STORE.data.set(`job:${job.id}`, JSON.stringify(raw));
+        return job;
+    }
+
+    it("USER_SLOT_MS is exactly 600000 ms — the 10-minute policy is unchanged", async () => {
+        assert.equal(USER_SLOT_MS, 600000);
+    });
+
+    it("SLOT_WAIT_CADENCE_S is 180 seconds (~3 minutes)", async () => {
+        assert.equal(SLOT_WAIT_CADENCE_S, 180);
+    });
+
+    it("a user's second request is not eligible before 10 minutes", async () => {
+        const env = fullEnv();
+        const first = await (await postJobAs({ v: VID }, env, "203.0.113.9")).json();
+        const second = await (await postJobAs({ v: VID }, env, "203.0.113.9")).json();
+        const firstRecord = await getJob(env.JOB_STORE, first.job.id);
+        const secondRecord = await getJob(env.JOB_STORE, second.job.id);
+        // Second slot opens at least a full USER_SLOT_MS after the first.
+        assert.ok(secondRecord.notBefore - firstRecord.notBefore >= USER_SLOT_MS - 2000);
+        // The consumer still refuses to process it early.
+        const msg = createMockMsg();
+        const result = await processJobMessage(
+            { jobId: second.job.id, videoId: VID, lang: null },
+            { store: env.JOB_STORE, retrieve: okRetrieve(), msg }
+        );
+        assert.equal(result.outcome, "slot-wait");
+        assert.equal(msg.acked, false);
+    });
+
+    it("long slot waits re-check at the cadence, not the full wait", async () => {
+        const env = fullEnv();
+        const job = await waitingJob(env, 600000);
+        const msg = createMockMsg();
+        const result = await processJobMessage(
+            { jobId: job.id, videoId: VID, lang: null },
+            { store: env.JOB_STORE, retrieve: okRetrieve(), msg }
+        );
+        assert.equal(result.outcome, "slot-wait");
+        // 10-minute wait -> reconsidered in ~3 minutes.
+        assert.equal(msg.retried.delaySeconds, SLOT_WAIT_CADENCE_S);
+    });
+
+    it("short slot waits are not padded up to the cadence", async () => {
+        const env = fullEnv();
+        const job = await waitingJob(env, 100000);
+        const msg = createMockMsg();
+        await processJobMessage(
+            { jobId: job.id, videoId: VID, lang: null },
+            { store: env.JOB_STORE, retrieve: okRetrieve(), msg }
+        );
+        // 100s wait -> 100s delay, not 180s.
+        assert.ok(msg.retried.delaySeconds <= 100);
+        assert.ok(msg.retried.delaySeconds >= 99);
+    });
+
+    it("repeated cadence ticks never burn attempts or move the pending counter", async () => {
+        const env = fullEnv();
+        const job = await waitingJob(env, 600000);
+        for (let tick = 0; tick < 3; tick++) {
+            const msg = createMockMsg();
+            const result = await processJobMessage(
+                { jobId: job.id, videoId: VID, lang: null },
+                { store: env.JOB_STORE, retrieve: okRetrieve(), msg }
+            );
+            assert.equal(result.outcome, "slot-wait");
+            assert.equal(msg.acked, false);
+            assert.equal(msg.retried.delaySeconds, SLOT_WAIT_CADENCE_S);
+            const record = await getJob(env.JOB_STORE, job.id);
+            assert.equal(record.attempts, 0);
+            assert.equal(record.status, JOB_STATUS.QUEUED);
+            assert.equal(await env.JOB_STORE.get("queue:pending"), "1");
+        }
+    });
+
+    it("one user's wait does not serialize another user's eligible job", async () => {
+        const env = fullEnv();
+        // User A: slot far in the future (waiting).
+        const waiting = await waitingJob(env, 600000);
+        // User B: no slot wait (eligible immediately).
+        const { job: eligible } = await (await postJobAs({ v: VID }, env, "203.0.113.99")).json();
+        const raw = JSON.parse(env.JOB_STORE.data.get(`job:${eligible.id}`));
+        raw.notBefore = Date.now() - 1000;
+        env.JOB_STORE.data.set(`job:${eligible.id}`, JSON.stringify(raw));
+        // B processes immediately — not held behind A's cadence.
+        const bMsg = createMockMsg();
+        const bResult = await processJobMessage(
+            { jobId: eligible.id, videoId: VID, lang: null },
+            { store: env.JOB_STORE, retrieve: okRetrieve(), msg: bMsg }
+        );
+        assert.equal(bResult.outcome, "completed");
+        assert.equal(bMsg.acked, true);
+        // A is still waiting at the cadence, untouched.
+        const aMsg = createMockMsg();
+        const aResult = await processJobMessage(
+            { jobId: waiting.id, videoId: VID, lang: null },
+            { store: env.JOB_STORE, retrieve: okRetrieve(), msg: aMsg }
+        );
+        assert.equal(aResult.outcome, "slot-wait");
+        assert.equal(aMsg.retried.delaySeconds, SLOT_WAIT_CADENCE_S);
+        // B's terminal completion decremented exactly once; A still pending.
+        assert.equal(await env.JOB_STORE.get("queue:pending"), "1");
+    });
+
+    it("terminal completion still decrements pending exactly once under the cadence", async () => {
+        const env = fullEnv();
+        const job = await waitingJob(env, 600000);
+        // Two cadence ticks while waiting.
+        for (let tick = 0; tick < 2; tick++) {
+            await processJobMessage(
+                { jobId: job.id, videoId: VID, lang: null },
+                { store: env.JOB_STORE, retrieve: okRetrieve(), msg: createMockMsg() }
+            );
+        }
+        assert.equal(await env.JOB_STORE.get("queue:pending"), "1");
+        // Slot opens; the job completes.
+        const raw = JSON.parse(env.JOB_STORE.data.get(`job:${job.id}`));
+        raw.notBefore = Date.now() - 1000;
+        env.JOB_STORE.data.set(`job:${job.id}`, JSON.stringify(raw));
+        const done = await processJobMessage(
+            { jobId: job.id, videoId: VID, lang: null },
+            { store: env.JOB_STORE, retrieve: okRetrieve(), msg: createMockMsg() }
+        );
+        assert.equal(done.outcome, "completed");
+        assert.equal(await env.JOB_STORE.get("queue:pending"), "0");
+        // Duplicate delivery after completion does not decrement again.
+        const dup = await processJobMessage(
+            { jobId: job.id, videoId: VID, lang: null },
+            { store: env.JOB_STORE, retrieve: okRetrieve(), msg: createMockMsg() }
+        );
+        assert.equal(dup.outcome, "acked");
+        assert.equal(await env.JOB_STORE.get("queue:pending"), "0");
     });
 });

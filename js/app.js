@@ -46,7 +46,8 @@ import { providerCredentials } from "./transcript/providers/credentials.js";
 import { acquireTranscript, acquireTranscriptWithFallback, applyAcquisitionToProject } from "./transcript/providers/manager.js";
 import { METHOD_PREFERENCE } from "./transcript/providers/provider.js";
 import {
-    createAcquisitionState, withSelection, beginAttempt, completeAttempt, resetAttempt, isCurrentAttemptResult
+    createAcquisitionState, withSelection, beginAttempt, completeAttempt, resetAttempt, isCurrentAttemptResult,
+    ACQUISITION_STATUS
 } from "./transcript/providers/acquisition-state.js";
 import { renderSidebar, setActiveNavItem } from "./ui/sidebar.js";
 import { renderHelpView } from "./ui/help.js";
@@ -380,6 +381,13 @@ function setCaptionJobState(next) {
 // Updates the queue-status component in place (no full
 // re-render: the provider keeps polling behind it).
 function handleCaptionJobUpdate(update) {
+    // Stale-attempt guard: a previous attempt's queue job may still be
+    // polling after a newer attempt completed (or the attempt was
+    // reset). Only the currently acquiring attempt may touch the
+    // queue-status box; late updates are discarded so a finished
+    // "Retrieving transcript…" never resurrects above loaded results.
+    const acquisition = getAcquisition();
+    if (!acquisition || acquisition.status !== ACQUISITION_STATUS.ACQUIRING) return;
     setCaptionJobState(update && typeof update === "object" ? update : null);
     if (state.get("route") !== "transcripts") return;
     const current = elements.content.querySelector('[data-section="caption-queue-status"]');

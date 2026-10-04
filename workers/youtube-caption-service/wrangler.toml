@@ -38,11 +38,15 @@ binding = "CAPTION_QUEUE"
 queue = "clipnexus-caption-jobs"
 max_batch_size = 5
 max_batch_timeout = 30
-# 10: slot-wait redeliveries (one per 10-minute user slot) must
-# not exhaust the delivery budget before genuine processing
-# retries. Slot waits never count against the app's
-# MAX_ATTEMPTS — attempts only start when processing starts.
-max_retries = 10
+# 30: at the ~3-minute slot-wait cadence, a job waiting out
+# a chained 10-minute user slot needs ~4 redeliveries before
+# its first processing attempt (vs 1 before the cadence); 30
+# covers ~80 minutes of slot waiting plus the app's own
+# processing retries. Slot waits never count against the
+# app's MAX_ATTEMPTS — attempts only start when processing
+# starts, and a job that exhausts MAX_ATTEMPTS is marked
+# failed and acked long before this budget matters.
+max_retries = 30
 dead_letter_queue = "clipnexus-caption-jobs-dlq"
 
 [[kv_namespaces]]
