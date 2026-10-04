@@ -250,7 +250,8 @@ export function renderClipsView(mountElement, project, view = {}) {
 
     if (!project) {
         mountElement.replaceChildren(
-            createInfoCard("No project", "Load a video or a transcript first, then return here to review clip candidates.", "Empty"));
+            createInfoCard("No project", "Load a video or a transcript first, then return here to review clip candidates.", "Empty", "tag",
+                { src: "./assets/brand/clipnexus-empty-dormant.webp", alt: "Empty timeline illustration" }));
         return;
     }
 
@@ -264,7 +265,8 @@ export function renderClipsView(mountElement, project, view = {}) {
     const specs = Array.isArray(project.clipSpecs) ? project.clipSpecs : [];
     if (specs.length === 0) {
         sections.push(createInfoCard("No clip candidates",
-            "Clip candidates appear here once ClipSpecs are derived from Events (Stage 9).", "Empty"));
+            "Clip candidates appear here once ClipSpecs are derived from Events (Stage 9).", "Empty", "tag",
+            { src: "./assets/brand/clipnexus-empty-dormant.webp", alt: "Empty timeline illustration" }));
     } else {
         specs.forEach((spec, index) => sections.push(createCandidateCard(spec, index, project, handlers)));
     }

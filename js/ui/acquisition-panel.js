@@ -57,6 +57,18 @@ export function createQueueStatus(captionJob) {
     if (!title) return box;
     box.append(createElement("p", "queue-status-title", title));
 
+    // Brand processing visual while the request is active. Decorative
+    // (alt="") — the status text beside it carries the meaning.
+    if (captionJob.phase === "queued" || captionJob.phase === "processing") {
+        const img = document.createElement("img");
+        img.className = "brand-processing";
+        img.src = "./assets/brand/clipnexus-processing-scan.webp";
+        img.alt = "";
+        img.loading = "lazy";
+        img.decoding = "async";
+        box.append(img);
+    }
+
     const lines = [];
     // "About N requests ahead of yours": the pending counter is
     // an approximation of queue depth, NOT an exact physical
@@ -392,16 +404,26 @@ export function createAcquisitionPanel({ project, acquisition, providers, onSele
         progress.dataset.state = "acquiring";
         getButton.setAttribute("aria-busy", "true");
         card.append(progress);
+        // Brand processing visual during direct acquisition. Decorative
+        // (alt="") — the progress paragraph carries the meaning.
+        const scan = document.createElement("img");
+        scan.className = "brand-processing";
+        scan.src = "./assets/brand/clipnexus-processing-scan.webp";
+        scan.alt = "";
+        scan.loading = "lazy";
+        scan.decoding = "async";
+        card.append(scan);
     } else if (status === ACQUISITION_STATUS.ERROR) {
         card.append(createErrorView({ attempt, providers, hasTranscript: project.transcript !== null, onAcquire, credentialReady }));
     } else if (status === ACQUISITION_STATUS.SUCCESS) {
         card.append(createSuccessView(attempt));
     }
     // The async caption queue reports here while a job is
-    // active. Updated in place by the app (no full re-render)
-    // as the provider polls; cleared when the attempt ends.
-    if (captionJob) {
-        card.append(createQueueStatus(captionJob));
-    }
+    // active. Always rendered (even empty) so queue progress
+    // updates have a live target to replace in place (no full
+    // re-render) as the provider polls; cleared when the attempt
+    // ends. Without this, queue position/wait updates are lost
+    // and the user sees only "Retrieving transcript…" indefinitely.
+    card.append(createQueueStatus(captionJob));
     return card;
 }

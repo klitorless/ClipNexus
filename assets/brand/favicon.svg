@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- ClipNexus favicon — derived from the existing brand geometry
+       (index.html .brand-mark play triangle, accent #8b5cf6).
+       This SVG is the authoritative small-size brand source. -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#0a0e14"/>
+  <rect x="2.5" y="2.5" width="59" height="59" rx="13.5" fill="none" stroke="#232b38" stroke-width="1"/>
+  <g transform="translate(32 32) scale(2) translate(-12.5 -12)">
+    <path d="M6 4.5v15l13-7.5z" fill="#8b5cf6"/>
+  </g>
+</svg>

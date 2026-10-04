@@ -88,7 +88,8 @@ function createScopeCard(transcript, onAnalyze) {
 
 function createStatusCard(analysis) {
     if (analysis.status === "running") {
-        return createInfoCard("Analysis running", "The analyzer is processing the selected scope.", "Working", "tag");
+        return createInfoCard("Analysis running", "The analyzer is processing the selected scope.", "Working", "tag",
+            { src: "./assets/brand/clipnexus-processing-scan.webp", alt: "", className: "brand-processing" });
     }
     if (analysis.status === "error") {
         return createInfoCard("Analysis failed", analysis.error || "Unknown error.", "Error", "tag tag-danger");

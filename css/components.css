@@ -1002,3 +1002,62 @@
 .review-steps strong {
     color: var(--text);
 }
+
+/* ---------- Brand imagery ---------- */
+/* ClipNexus image system (assets/brand/). Decorative by default: imagery
+   illustrates process (timeline -> nexus -> moments), never data. All
+   imagery is same-origin WebP/SVG, so no CSP change is needed. */
+
+.brand-hero {
+    margin: 0 0 var(--space-4);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--elevation-1);
+}
+
+.brand-hero img {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 21 / 9;
+    object-fit: cover;
+}
+
+/* Empty-state illustration inside info cards. */
+.brand-empty {
+    display: block;
+    width: 100%;
+    max-width: 320px;
+    height: auto;
+    margin: 0 auto var(--space-3);
+    border-radius: var(--radius-sm);
+}
+
+/* Processing-state banner: slim crop keeps it subtle inside status boxes. */
+.brand-processing {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 120px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    margin: var(--space-2) 0;
+}
+
+@media (max-width: 719px) {
+    /* The dashboard hero never pushes the intake form down on phones. */
+    .brand-hero {
+        display: none;
+    }
+    .brand-empty {
+        max-width: 240px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .brand-processing {
+        /* Static resting frame only; no animated enhancement. */
+        max-height: 96px;
+    }
+}

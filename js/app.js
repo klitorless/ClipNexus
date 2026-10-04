@@ -87,7 +87,8 @@ const placeholderText = {
 // no invented data, just the honest pipeline position.
 function renderPlaceholderView(mount, routeId) {
     const project = state.get("project");
-    const cards = [createInfoCard("Not built yet", placeholderText[routeId], "Stage 1")];
+    const dormant = { src: "./assets/brand/clipnexus-empty-dormant.webp", alt: "Dormant timeline illustration" };
+    const cards = [createInfoCard("Not built yet", placeholderText[routeId], "Stage 1", "tag", dormant)];
     if (project && (routeId === "pois" || routeId === "events")) {
         const chain = [
             `Transcript: ${project.transcript ? `${project.transcript.segments.length} segments` : "not loaded"}`,

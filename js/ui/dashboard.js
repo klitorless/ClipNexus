@@ -24,6 +24,20 @@ export function formatFileSize(bytes) {
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+// Brand hero: decorative "timeline -> nexus -> moments" banner above the
+// intake card. Purely decorative (alt="") — it illustrates the ClipNexus
+// process, never data. Hidden on narrow screens via CSS.
+function createBrandHero() {
+    const figure = createElement("figure", "brand-hero");
+    const img = document.createElement("img");
+    img.src = "./assets/brand/clipnexus-hero-nexus.webp";
+    img.alt = "";
+    img.loading = "lazy";
+    img.decoding = "async";
+    figure.append(img);
+    return figure;
+}
+
 function createStatusCard() {
     const card = createElement("article", "card");
     card.append(
@@ -238,6 +252,7 @@ export function renderDashboard(mountElement, appState, handlers) {
     const hasVideo = project !== null && project !== undefined && project.video != null;
 
     const children = [
+        createBrandHero(),
         createIntakeCard({
             onSubmit: handlers.onVideoUrlSubmit,
             onUrlInput: handlers.onVideoUrlInput || null,

@@ -117,8 +117,15 @@ function createRawPreviewCard(rawText, fromProvider) {
 
 function createEmptyCard() {
     const card = createElement("article", "card");
+    const img = document.createElement("img");
+    img.className = "brand-empty";
+    img.src = "./assets/brand/clipnexus-empty-dormant.webp";
+    img.alt = "Empty timeline illustration";
+    img.loading = "lazy";
+    img.decoding = "async";
     card.append(
         createElement("h2", "card-title", "No transcript loaded"),
+        img,
         createElement("p", "card-body",
             "Use Upload Transcript to import a transcript file, or choose a provider above. " +
             "Imported files stay in this browser and are not uploaded anywhere.")

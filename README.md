@@ -43,6 +43,26 @@ The current application already has a functioning canonical transcript pipeline 
 
 Each visual below is labeled with what it represents: **CURRENT** (implemented behavior), **ARCHITECTURE** (how the system is structured), or **CONCEPTUAL / FUTURE** (direction, not built yet). Nothing here shows a feature that doesn't exist.
 
+### The app today — REAL UI
+
+Real screenshots of the live app (fresh session, no video loaded). Everything shown below is the actual interface, not a mockup.
+
+![ClipNexus dashboard](docs/images/ui-dashboard.webp)
+
+**Dashboard.** The hero banner and the Create Project intake: paste a YouTube URL, optionally add a YouTube Data API key for real video titles, and load the VOD. The pipeline strip (Transcript / POIs / Events / Clip candidates) fills in with real counts as work completes.
+
+![Transcripts page](docs/images/ui-transcripts.webp)
+
+**Transcripts.** The Stage 2B acquisition panel — "Get transcript from a provider" — alongside the empty state. Upload a transcript file (TXT/SRT/VTT) or fetch captions for the linked video via YouTube native captions or Supadata, with the queue showing live position and wait time.
+
+![Analysis page](docs/images/ui-analysis.webp)
+
+**Analysis.** Runs Transcript Intelligence over a loaded transcript, then timeline analysis. The starting state points back to the Transcripts tab — nothing runs on fake data.
+
+![Clip Queue](docs/images/ui-clip-queue.webp)
+
+**Clip Queue.** Where clip candidates are reviewed against the embedded player with seek, Keep, and Reject. Empty until a video or transcript is loaded.
+
 ### What works today — CURRENT
 
 ![What ClipNexus does today](docs/images/v9-what-works-today.webp)

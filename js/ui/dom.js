@@ -23,10 +23,21 @@ export function createDetailList(rows) {
     return list;
 }
 
-// Simple titled card with an optional status tag.
-export function createInfoCard(title, bodyText, tagText, tagClass = "tag") {
+// Simple titled card with an optional status tag and an optional
+// brand illustration. image: { src, alt, className? } | null — kept
+// optional so existing 4-argument callers are unaffected.
+export function createInfoCard(title, bodyText, tagText, tagClass = "tag", image = null) {
     const card = createElement("article", "card");
     if (tagText) card.append(createElement("span", tagClass, tagText));
+    if (image && image.src) {
+        const img = document.createElement("img");
+        img.className = image.className || "brand-empty";
+        img.src = image.src;
+        img.alt = image.alt || "";
+        img.loading = "lazy";
+        img.decoding = "async";
+        card.append(img);
+    }
     card.append(
         createElement("h2", "card-title", title),
         createElement("p", "card-body", bodyText)
