@@ -866,6 +866,13 @@
     min-height: 0;
 }
 
+/* ---------- Analysis timestamp navigation ---------- */
+
+.timestamp-button {
+    margin: var(--space-3) 0 var(--space-1);
+    font-variant-numeric: tabular-nums;
+}
+
 /* ---------- Transcript acquisition panel ---------- */
 
 .acquisition-panel .card-title {

@@ -137,6 +137,7 @@ const BUILDER_SECTIONS = [
         title: "Keywords",
         blurb: "Your own keywords and phrases, comma-separated.",
         input: "keyword",
+        sensitivity: false, // threshold is 1 at every sensitivity — the vocabulary is the control
         fixedNote: "Always case-insensitive · Always whole-word — “cat” never matches “communication”."
     },
     {
@@ -149,7 +150,8 @@ const BUILDER_SECTIONS = [
         type: DETECTOR_TYPE.PHRASE,
         title: "Custom Phrases",
         blurb: "Your own phrases to search for, e.g. “watch this”. Same matching rules as Keywords.",
-        input: "phrase"
+        input: "phrase",
+        sensitivity: false // threshold is 1 at every sensitivity — the vocabulary is the control
     }
 ];
 
@@ -330,18 +332,29 @@ function createBuilderSection(descriptor, liveConfig, onConfigChange) {
             status.textContent = "Off";
             return;
         }
+        // Sections without a sensitivity control show no
+        // sensitivity in their status either.
+        const sensitivity = descriptor.sensitivity === false
+            ? ""
+            : ` · ${describeSensitivity(options.sensitivity)}`;
         // A term-based detector with no terms is effectively
         // idle (runDetectors skips empty term lists); say so.
         const terms = type === DETECTOR_TYPE.KEYWORD ? (options.keywords || [])
             : type === DETECTOR_TYPE.PHRASE ? (options.phrases || [])
             : null;
         const idle = Array.isArray(terms) && terms.length === 0 ? " · no terms" : "";
-        status.textContent = `On · ${describeSensitivity(options.sensitivity)}${idle}`;
+        status.textContent = `On${sensitivity}${idle}`;
     };
 
     const options = resolveSectionConfig(liveConfig, type);
     body.append(createEnableRow(type, title, options, onConfigChange, refreshStatus));
-    body.append(createSensitivityFieldset(type, options, onConfigChange, refreshStatus));
+    // Sensitivity is only exposed where it changes detector
+    // behavior (score thresholds). Keyword/phrase emit on any
+    // match at every sensitivity — their vocabulary is the
+    // control, so no sensitivity UI is shown.
+    if (descriptor.sensitivity !== false) {
+        body.append(createSensitivityFieldset(type, options, onConfigChange, refreshStatus));
+    }
     body.append(createElement("p", "builder-note", descriptor.blurb));
     if (descriptor.vocabulary) {
         body.append(createVocabularyNote(descriptor.vocabulary, descriptor.vocabNote));
@@ -388,7 +401,75 @@ function createBuilderCard(config, onConfigChange) {
 // its score, and the matched signals — the explainability the
 // detector layer guarantees. Analysis is never displayed as
 // anonymous detached text.
-function createEvidenceCard(evidence, index) {
+// ---------- Evidence timestamp navigation ----------
+//
+// Evidence references transcript segments through
+// sourceRef.segmentIds. The seek target is the first
+// referenced segment with a valid numeric start time
+// (segment.start.seconds — the canonical transcript
+// timestamp). Multi-segment evidence uses the FIRST valid
+// segment; a richer navigation policy can replace this
+// later. Timestamps are never derived from quote text,
+// scores, evidence ids, or array positions — and never
+// fabricated: no valid segment start means no seek target.
+
+/**
+ * Resolve the seek target (seconds) for an evidence item,
+ * or null when no referenced segment has a valid start.
+ * Pure and deterministic.
+ */
+export function resolveEvidenceTimestamp(evidence, transcript) {
+    const segmentIds = evidence && evidence.sourceRef && evidence.sourceRef.segmentIds;
+    const segments = transcript && transcript.segments;
+    if (!Array.isArray(segmentIds) || !Array.isArray(segments)) return null;
+    const byId = new Map();
+    for (const segment of segments) {
+        if (segment && typeof segment.id === "string") byId.set(segment.id, segment);
+    }
+    for (const id of segmentIds) {
+        const segment = byId.get(id);
+        const seconds = segment && segment.start ? segment.start.seconds : undefined;
+        if (typeof seconds === "number" && Number.isFinite(seconds) && seconds >= 0) {
+            return seconds;
+        }
+    }
+    return null;
+}
+
+/**
+ * Human-readable timestamp: "MM:SS" under an hour,
+ * "HH:MM:SS" at or above. Rounds to whole seconds;
+ * never negative.
+ */
+export function formatTimestamp(totalSeconds) {
+    const total = Math.max(0, Math.round(totalSeconds));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const seconds = total % 60;
+    const mm = String(minutes).padStart(2, "0");
+    const ss = String(seconds).padStart(2, "0");
+    return hours > 0 ? `${String(hours).padStart(2, "0")}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+/**
+ * Spoken timestamp for accessible labels:
+ * "1 minute 23 seconds", "8 seconds", "1 hour 2 minutes".
+ */
+export function describeTimestamp(totalSeconds) {
+    const total = Math.max(0, Math.round(totalSeconds));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const seconds = total % 60;
+    const parts = [];
+    if (hours > 0) parts.push(`${hours} hour${hours === 1 ? "" : "s"}`);
+    if (minutes > 0) parts.push(`${minutes} minute${minutes === 1 ? "" : "s"}`);
+    if (seconds > 0 || parts.length === 0) {
+        parts.push(`${seconds} second${seconds === 1 ? "" : "s"}`);
+    }
+    return parts.join(" ");
+}
+
+function createEvidenceCard(evidence, index, seekContext = null) {
     const card = createElement("article", "card");
     card.dataset.section = "evidence";
     card.append(createElement("span", "tag", "Evidence"));
@@ -407,6 +488,25 @@ function createEvidenceCard(evidence, index) {
         details.push(["Signals", (content.signals || []).join("; ")]);
     }
     card.append(createDetailList(details));
+    // Timestamp navigation: a real button, only when the
+    // evidence resolves to a transcript timestamp AND a
+    // playable video exists. The click hands seconds to the
+    // app's player coordinator — this view never touches
+    // iframes, drivers, or postMessage.
+    if (seekContext && seekContext.playerAvailable &&
+        typeof seekContext.onSeekTimestamp === "function") {
+        const seconds = resolveEvidenceTimestamp(evidence, seekContext.transcript);
+        if (seconds !== null) {
+            const seekButton = createElement(
+                "button", "button button-small timestamp-button",
+                `▶ ${formatTimestamp(seconds)}`
+            );
+            seekButton.type = "button";
+            seekButton.setAttribute("aria-label", `Seek player to ${describeTimestamp(seconds)}`);
+            seekButton.addEventListener("click", () => seekContext.onSeekTimestamp(seconds));
+            card.append(seekButton);
+        }
+    }
     const quote = evidence.content && evidence.content.quote !== undefined
         ? String(evidence.content.quote)
         : JSON.stringify(evidence.content);
@@ -437,13 +537,40 @@ function createResultsCard(request, result) {
     return card;
 }
 
+function createAnalysisPlayerCard(player) {
+    const card = createElement("article", "card preview-player");
+    card.dataset.section = "analysis-player";
+    card.append(
+        createElement("span", "tag", "VOD player"),
+        createElement("h2", "card-title", "Seek target")
+    );
+    if (player && player.available && player.mount) {
+        card.append(createElement("p", "card-body",
+            "Tap a timestamp on any evidence card to seek this player."));
+        card.append(player.mount);
+    } else {
+        card.append(createElement("p", "card-body",
+            "Load a video on the Dashboard to enable timestamp seeking."));
+    }
+    return card;
+}
+
 /**
  * @param {HTMLElement} mountElement
  * @param {object|null} project
- * @param {object|null} [analysisView]  { analysis, onAnalyze, builder }.
+ * @param {object|null} [analysisView]  { analysis, onAnalyze, builder, player, onSeekTimestamp }.
  *        analysis: { status: "idle"|"running"|"done"|"error", request?, result?, error? }.
  *        builder: { config, onConfigChange } | null — the analysis
  *        builder card. Omitted → scope controls only.
+ *        player: { mount, available } | null — the embedded VOD
+ *        player for timestamp seeking. The mount is a live
+ *        element owned by the app's player coordinator;
+ *        re-attaching it across re-renders never reloads the
+ *        video. This view never creates iframes or builds
+ *        embed URLs.
+ *        onSeekTimestamp: (seconds) => void — provider-neutral
+ *        seek request; the coordinator/controller owns how the
+ *        seek is performed.
  *        Omitted entirely → scope controls only (read-only rendering).
  */
 export function renderAnalysisView(mountElement, project, analysisView = null) {
@@ -456,6 +583,8 @@ export function renderAnalysisView(mountElement, project, analysisView = null) {
     const analysis = (analysisView && analysisView.analysis) || { status: "idle" };
     const onAnalyze = (analysisView && analysisView.onAnalyze) || (() => {});
     const builder = analysisView && analysisView.builder;
+    const player = analysisView && analysisView.player;
+    const onSeekTimestamp = analysisView && analysisView.onSeekTimestamp;
 
     const sections = [createScopeCard(transcript, onAnalyze)];
     if (builder) {
@@ -464,12 +593,20 @@ export function renderAnalysisView(mountElement, project, analysisView = null) {
             typeof builder.onConfigChange === "function" ? builder.onConfigChange : () => {}
         ));
     }
+    if (player) {
+        sections.push(createAnalysisPlayerCard(player));
+    }
     const statusCard = createStatusCard(analysis);
     if (statusCard) sections.push(statusCard);
     if (analysis.status === "done" && analysis.request && analysis.result) {
         sections.push(createResultsCard(analysis.request, analysis.result));
+        const seekContext = onSeekTimestamp ? {
+            transcript,
+            playerAvailable: Boolean(player && player.available),
+            onSeekTimestamp
+        } : null;
         analysis.result.evidence.forEach((item, index) => {
-            sections.push(createEvidenceCard(item, index));
+            sections.push(createEvidenceCard(item, index, seekContext));
         });
     }
     mountElement.replaceChildren(...sections);

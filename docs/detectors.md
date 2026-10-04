@@ -175,3 +175,27 @@ Deliberately not exposed (the detectors do not support
 them): per-phrase toggles, custom hype/reaction/question
 phrases, case/whole-word switches (always on), emphasis
 sub-toggles, and minimum-repetition settings.
+
+---
+
+## Evidence timestamp seeking (Analysis tab)
+
+Evidence cards show a "▶ MM:SS" button when the evidence
+resolves to a transcript timestamp. Resolution is
+`resolveEvidenceTimestamp()`: the first id in
+`sourceRef.segmentIds` whose segment has a valid numeric
+`start.seconds`; anything else (missing/invalid starts)
+yields no button rather than a fabricated timestamp.
+
+Clicks call the app's analysis player coordinator
+(`controller.seek(seconds)`), which queues the seek until
+the embedded player is ready. The Analysis UI never creates
+iframes, builds embed URLs, or posts provider messages.
+
+## Sensitivity
+
+Sensitivity (Low/Normal/High) selects a per-detector score
+threshold and is only shown where it changes behavior
+(hype, question, reaction, emphasis). Keyword and phrase
+emit on any match at every sensitivity, so the builder
+exposes only their vocabulary — no sensitivity control.

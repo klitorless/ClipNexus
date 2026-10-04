@@ -44,6 +44,7 @@ import {
 } from "./transcript/providers/acquisition-state.js";
 import { renderSidebar, setActiveNavItem } from "./ui/sidebar.js";
 import { renderDashboard } from "./ui/dashboard.js";
+import { DEV_DEFAULT_VIDEO_URL } from "./ui/project-panel.js";
 import { renderTranscriptsView } from "./ui/transcripts.js";
 import { renderAnalysisView } from "./ui/analysis.js";
 import { downloadTextFile } from "./ui/download.js";
@@ -93,14 +94,16 @@ function renderPlaceholderView(mount, routeId) {
 function renderView(routeId) {
     // Each embedded player lives only on its own route: leaving a
     // route tears its player down so no hidden iframe keeps running
-    // behind other views. Every route other than dashboard and
-    // clips remains iframe-free (Stage 10 security boundary,
-    // extended to the dashboard preview).
+    // behind other views. Every route other than dashboard,
+    // clips, and analysis remains iframe-free (Stage 10 security
+    // boundary, extended to the dashboard preview and analysis
+    // timestamp seeking).
     if (routeId !== "clips") {
         clipsPlayer.teardown();
         clipsHintHonoredFor = null;
     }
     if (routeId !== "dashboard") dashboardPlayer.teardown();
+    if (routeId !== "analysis") analysisPlayer.teardown();
 
     const route = routes.find((item) => item.id === routeId);
     elements.pageTitle.textContent = route ? route.label : "Dashboard";
@@ -111,6 +114,8 @@ function renderView(routeId) {
         const dashboardController = syncPlayerForDashboard(project);
         renderDashboard(elements.content, state, {
             onVideoUrlSubmit: handleVideoUrlSubmit,
+            onVideoUrlInput: handleVideoUrlInput,
+            initialVideoUrl: getVideoUrlDraft(),
             youTubeApiKey: {
                 ready: providerCredentials.has(YOUTUBE_API_KEY_ID),
                 onSave: handleYouTubeKeySave,
@@ -134,14 +139,22 @@ function renderView(routeId) {
         onExportTranscript: handleExportTranscript,
         exportNotice: getExportNotice()
     });
-    else if (routeId === "analysis") renderAnalysisView(elements.content, project, {
-        analysis: getAnalysis(),
-        onAnalyze: handleAnalyze,
-        builder: {
-            config: getAnalysisConfig(),
-            onConfigChange: handleAnalysisConfigChange
-        }
-    });
+    else if (routeId === "analysis") {
+        const analysisController = syncPlayerForAnalysis(project);
+        renderAnalysisView(elements.content, project, {
+            analysis: getAnalysis(),
+            onAnalyze: handleAnalyze,
+            builder: {
+                config: getAnalysisConfig(),
+                onConfigChange: handleAnalysisConfigChange
+            },
+            player: {
+                mount: analysisPlayer.getMount(playerRuntimeHost()),
+                available: analysisController !== null
+            },
+            onSeekTimestamp: handleAnalysisSeek
+        });
+    }
     else if (routeId === "clips") renderClipsRoute();
     else renderPlaceholderView(elements.content, routeId);
 
@@ -207,6 +220,21 @@ function commitVideoPlan(videoPlan, confirmed, identity) {
         return acquiring;
     }
     return notice;
+}
+
+// VOD URL draft: the user's typed-but-unsubmitted URL, kept in
+// ui state so dashboard rerenders never wipe it (ui writes do
+// not trigger re-renders). `undefined` means "never touched":
+// the form then shows the temporary dev default.
+function getVideoUrlDraft() {
+    const ui = state.get("ui");
+    const draft = ui ? ui.videoUrlDraft : undefined;
+    return draft === undefined ? DEV_DEFAULT_VIDEO_URL : draft;
+}
+
+function handleVideoUrlInput(value) {
+    const ui = state.get("ui") || {};
+    state.set("ui", { ...ui, videoUrlDraft: value });
 }
 
 // Returns a notice for the form. A confirmation notice carries
@@ -700,14 +728,16 @@ async function handleAnalyze({ scopeType, chunkId }) {
 // The player controller is a LIVE object (it owns the iframe, the
 // readiness handshake, and the seek queue). It never enters the
 // frozen Project or serializable state — the coordinators own it.
-// One coordinator per player-showing route (Clips review, Dashboard
-// preview); both share the provider-neutral coordinator mechanism
-// in js/video/player/coordinator.js instead of duplicating player
-// logic. The iframe mount is a persistent element: re-renders
-// re-attach the SAME mount, so KEEP/REJECT decisions (which replace
-// the project and re-render) do not reload the video.
+// One coordinator per player-showing route (Clips review,
+// Dashboard preview, Analysis timestamp seeking); all share
+// the provider-neutral coordinator mechanism in
+// js/video/player/coordinator.js instead of duplicating
+// player logic. The iframe mount is a persistent element:
+// re-renders re-attach the SAME mount, so analysis runs
+// (which re-render the view) do not reload the video.
 const clipsPlayer = createPlayerCoordinator({ driver: youtubePlayerDriver });
 const dashboardPlayer = createPlayerCoordinator({ driver: youtubePlayerDriver });
+const analysisPlayer = createPlayerCoordinator({ driver: youtubePlayerDriver });
 
 // "platform:videoId" the clips start-position hint was honored for.
 // Reset whenever the clips player is torn down.
@@ -751,6 +781,28 @@ function syncPlayerForDashboard(project) {
     const video = project ? project.video : null;
     const identity = video ? video.identity : null;
     return dashboardPlayer.sync(identity, playerRuntimeHost());
+}
+
+// Ensure the Analysis timestamp-seeking player matches the
+// current project. Same coordinator mechanism as Dashboard
+// and Clips: a null or unplayable identity tears down any
+// existing player and yields null, so timestamp controls
+// never attempt to create an invalid player.
+function syncPlayerForAnalysis(project) {
+    const video = project ? project.video : null;
+    const identity = video ? video.identity : null;
+    return analysisPlayer.sync(identity, playerRuntimeHost());
+}
+
+// Provider-neutral seek request from an Analysis evidence
+// timestamp button. The controller owns readiness: a seek
+// issued before the player is ready is queued, never lost.
+// No-op when no playable video exists (no timestamp buttons
+// are rendered in that case).
+function handleAnalysisSeek(seconds) {
+    const controller = analysisPlayer.controller;
+    if (!controller) return;
+    controller.seek(seconds);
 }
 
 // Current review target. Ephemeral UI state (like acquisition and

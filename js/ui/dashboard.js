@@ -239,6 +239,8 @@ export function renderDashboard(mountElement, appState, handlers) {
     const children = [
         createIntakeCard({
             onSubmit: handlers.onVideoUrlSubmit,
+            onUrlInput: handlers.onVideoUrlInput || null,
+            initialUrl: handlers.initialVideoUrl || "",
             notice: appState.get("ui").videoUrlNotice || null,
             apiKey: handlers.youTubeApiKey || null
         }),

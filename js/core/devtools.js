@@ -31,6 +31,7 @@ import { addYouTubeNativeTests } from "./devtools-youtube-native-tests.js";
 import { addAnalysisTests } from "./devtools-analysis-tests.js";
 import { addDetectorTests } from "./devtools-detector-tests.js";
 import { addAnalysisBuilderTests } from "./devtools-analysis-builder-tests.js";
+import { addAnalysisTimestampsTests } from "./devtools-analysis-timestamps-tests.js";
 import { addChunkingTests } from "./devtools-chunking-tests.js";
 import { addAnalyzerIntegrationTests } from "./devtools-analyzer-tests.js";
 import { addStage4Tests } from "./devtools-stage4-tests.js";
@@ -193,6 +194,7 @@ function buildTests(appState) {
     // reaction, emphasis, phrase → analyzer-seam extractor.
     addDetectorTests(add);
     addAnalysisBuilderTests(add);
+    addAnalysisTimestampsTests(add);
 
     // Stage 2C: deterministic chunking + export.
     addChunkingTests(add);

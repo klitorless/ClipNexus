@@ -37,7 +37,17 @@ const metadataStatusLabels = {
  *        The key is held in memory for the page session only and is
  *        used solely to fetch video titles from YouTube.
  */
-export function createVideoUrlForm({ onSubmit, notice = null, apiKey = null, bare = false }) {
+// ==========================================================
+// TEMPORARY development/testing convenience: the Dashboard VOD
+// URL field is pre-filled with this URL so testers do not
+// retype it on every load. This is a DEFAULT FIELD VALUE
+// ONLY — it never auto-loads, fetches, or creates anything;
+// the user must still press "Load Video". Remove or replace
+// before production release.
+// ==========================================================
+export const DEV_DEFAULT_VIDEO_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+
+export function createVideoUrlForm({ onSubmit, notice = null, apiKey = null, bare = false, initialUrl = "", onUrlInput = null }) {
     // bare: render without the card chrome so a caller can wrap the
     // form in its own card (e.g. the Dashboard "Create Project"
     // intake card).
@@ -58,6 +68,14 @@ export function createVideoUrlForm({ onSubmit, notice = null, apiKey = null, bar
         placeholder: "https://www.youtube.com/watch?v=…"
     });
     input.setAttribute("autocapitalize", "off");
+    // A caller-supplied initial value (e.g. the preserved user
+    // draft, or the dev default on first render). Never
+    // overwritten after creation: rerenders rebuild the form
+    // from the caller's value, not from the default.
+    if (initialUrl) input.value = initialUrl;
+    if (typeof onUrlInput === "function") {
+        input.addEventListener("input", () => onUrlInput(input.value));
+    }
 
     const button = createElement("button", "button button-primary", "Load Video");
     button.type = "submit";
