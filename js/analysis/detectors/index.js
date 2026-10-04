@@ -75,6 +75,40 @@ function validSegment(segment) {
 }
 
 /**
+ * Validate a user config for an analysis run. Returns
+ * { ok: true } or { ok: false, error } with a user-facing
+ * message. Pure: safe to call from UI code and tests.
+ *
+ * Rules:
+ *   - at least one detector must be enabled
+ *   - a term-based detector the user EXPLICITLY enabled with
+ *     no terms is a user error; untouched defaults keep the
+ *     historical silent skip (runDetectors ignores empty
+ *     term lists), so a fresh default config always validates
+ */
+export function validateAnalysisConfig(userConfig = {}) {
+    let config;
+    try {
+        config = resolveDetectorConfig(userConfig);
+    } catch (error) {
+        return { ok: false, error: "The analysis configuration is invalid." };
+    }
+    const user = userConfig || {};
+    const anyEnabled = DETECTOR_ORDER.some((type) => config[type].enabled);
+    if (!anyEnabled) {
+        return { ok: false, error: "Select at least one analysis type to search for." };
+    }
+    const explicitOn = (section) => section && section.enabled === true;
+    if (explicitOn(user[DETECTOR_TYPE.KEYWORD]) && config[DETECTOR_TYPE.KEYWORD].keywords.length === 0) {
+        return { ok: false, error: "Add at least one keyword, or turn Keywords off." };
+    }
+    if (explicitOn(user[DETECTOR_TYPE.PHRASE]) && config[DETECTOR_TYPE.PHRASE].phrases.length === 0) {
+        return { ok: false, error: "Add at least one phrase, or turn Custom Phrases off." };
+    }
+    return { ok: true };
+}
+
+/**
  * Run every enabled detector over the segments.
  *
  * @param {Array} segments  segment views { id, text, start: { seconds } }

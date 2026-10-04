@@ -13,6 +13,14 @@
 // ==========================================================
 
 import { createElement, createDetailList, createInfoCard } from "./dom.js";
+import {
+    DETECTOR_TYPE,
+    SENSITIVITY,
+    DEFAULT_DETECTOR_CONFIG
+} from "../analysis/detectors/types.js";
+import { HYPE_PHRASES } from "../analysis/detectors/hype.js";
+import { QUESTION_WORDS } from "../analysis/detectors/question.js";
+import { REACTION_PHRASES } from "../analysis/detectors/reaction.js";
 
 function createEmptyCard() {
     const card = createElement("article", "card");
@@ -88,6 +96,292 @@ function createStatusCard(analysis) {
     return null;
 }
 
+// ---------- Analysis builder ----------
+//
+// The builder is a CONFIGURATION layer only: it produces the
+// canonical detector config consumed by runDetectors() via the
+// analyzer. It never classifies text, scores, or matches — the
+// vocabulary lists below are read from the detector modules
+// for display, and every control maps to a real config field.
+//
+// Only capabilities the detectors actually support are
+// exposed: per-detector enable + sensitivity, the keyword
+// list, and the phrase list. Fixed vocabularies are shown
+// read-only; case-insensitivity and whole-word matching are
+// inherent detector behavior, not toggles.
+
+const BUILDER_SECTIONS = [
+    {
+        type: DETECTOR_TYPE.QUESTION,
+        title: "Questions",
+        blurb: "Question-like segments: explicit question marks and question-word sentence structure.",
+        vocabulary: [...QUESTION_WORDS],
+        vocabNote: "The detector recognizes these question words (first word of the segment)."
+    },
+    {
+        type: DETECTOR_TYPE.HYPE,
+        title: "Hype",
+        blurb: "Excitement and high-energy language. Stronger phrases score higher; sensitivity sets the cutoff.",
+        vocabulary: HYPE_PHRASES.map((entry) => entry.phrase),
+        vocabNote: "The detector's fixed phrase list."
+    },
+    {
+        type: DETECTOR_TYPE.REACTION,
+        title: "Reactions",
+        blurb: "Strong reaction language. Separate from Hype — a segment may trigger both.",
+        vocabulary: [...REACTION_PHRASES],
+        vocabNote: "The detector's fixed phrase list."
+    },
+    {
+        type: DETECTOR_TYPE.KEYWORD,
+        title: "Keywords",
+        blurb: "Your own keywords and phrases, comma-separated.",
+        input: "keyword",
+        fixedNote: "Always case-insensitive · Always whole-word — “cat” never matches “communication”."
+    },
+    {
+        type: DETECTOR_TYPE.EMPHASIS,
+        title: "Emphasis",
+        blurb: "Repeated words (“no no no”), repeated punctuation (“!!!”, “???”), and ALL CAPS.",
+        fixedNote: "Capitalization and punctuation are never required — normalized transcripts simply yield no emphasis signal."
+    },
+    {
+        type: DETECTOR_TYPE.PHRASE,
+        title: "Custom Phrases",
+        blurb: "Your own phrases to search for, e.g. “watch this”. Same matching rules as Keywords.",
+        input: "phrase"
+    }
+];
+
+function describeSensitivity(sensitivity) {
+    if (sensitivity === SENSITIVITY.LOW) return "Low";
+    if (sensitivity === SENSITIVITY.HIGH) return "High";
+    return "Normal";
+}
+
+function resolveSectionConfig(config, type) {
+    return { ...DEFAULT_DETECTOR_CONFIG[type], ...(config[type] || {}) };
+}
+
+// Comma-separated input → keyword list. Trims, drops empties,
+// dedupes case-insensitively (matching is case-insensitive, so
+// "BMW, bmw" would otherwise double-count).
+export function parseKeywordInput(value) {
+    const seen = new Set();
+    const keywords = [];
+    for (const part of String(value ?? "").split(",")) {
+        const trimmed = part.trim();
+        if (trimmed.length === 0 || seen.has(trimmed.toLowerCase())) continue;
+        seen.add(trimmed.toLowerCase());
+        keywords.push(trimmed);
+    }
+    return keywords;
+}
+
+function createEnableRow(type, title, options, onConfigChange, refreshStatus) {
+    const checkbox = createElement("input", "");
+    checkbox.type = "checkbox";
+    checkbox.checked = options.enabled === true;
+    checkbox.setAttribute("aria-label", `Enable ${title}`);
+    checkbox.addEventListener("change", () => {
+        onConfigChange(type, { enabled: checkbox.checked });
+        refreshStatus();
+    });
+    const label = createElement("label", "check-label");
+    label.append(checkbox, createElement("span", "", `Enable ${title}`));
+    return label;
+}
+
+function createSensitivityFieldset(type, options, onConfigChange, refreshStatus) {
+    const fieldset = createElement("fieldset", "builder-sensitivity");
+    fieldset.append(createElement("legend", "", "Sensitivity"));
+    for (const value of [SENSITIVITY.LOW, SENSITIVITY.NORMAL, SENSITIVITY.HIGH]) {
+        const radio = createElement("input", "");
+        radio.type = "radio";
+        radio.name = `sensitivity-${type}`;
+        radio.value = value;
+        radio.checked = options.sensitivity === value;
+        radio.addEventListener("change", () => {
+            onConfigChange(type, { sensitivity: value });
+            refreshStatus();
+        });
+        const label = createElement("label", "radio-label");
+        label.append(radio, createElement("span", "", describeSensitivity(value)));
+        fieldset.append(label);
+    }
+    return fieldset;
+}
+
+function createVocabularyNote(vocabulary, note) {
+    const wrap = createElement("p", "builder-note", `${note} `);
+    wrap.append(createElement("span", "builder-vocab", vocabulary.join(", ")));
+    return wrap;
+}
+
+function createKeywordInput(options, onConfigChange, refreshStatus) {
+    const wrap = createElement("div", "builder-field");
+    const input = createElement("input", "text-input");
+    input.type = "text";
+    input.id = "builder-keyword-input";
+    input.placeholder = "BMW, turbo, engine failure";
+    input.autocomplete = "off";
+    input.value = (options.keywords || []).join(", ");
+    const label = createElement("label", "builder-label");
+    label.setAttribute("for", "builder-keyword-input");
+    label.textContent = "Keywords (comma-separated)";
+    input.setAttribute("aria-describedby", "builder-keyword-note");
+    input.addEventListener("input", () => {
+        onConfigChange(DETECTOR_TYPE.KEYWORD, { keywords: parseKeywordInput(input.value) });
+        refreshStatus();
+    });
+    const note = createElement("p", "builder-note");
+    note.id = "builder-keyword-note";
+    note.textContent = "Always case-insensitive · Always whole-word — “cat” never matches “communication”.";
+    wrap.append(label, input, note);
+    return wrap;
+}
+
+function createPhraseList(configRef, onConfigChange, refreshStatus) {
+    const wrap = createElement("div", "builder-field");
+    const label = createElement("span", "builder-label", "Phrases");
+    label.id = "builder-phrase-label";
+    const list = createElement("ul", "builder-phrase-list");
+    list.setAttribute("aria-labelledby", "builder-phrase-label");
+
+    const currentPhrases = () => {
+        const section = (configRef() || {})[DETECTOR_TYPE.PHRASE] || {};
+        return Array.isArray(section.phrases) ? section.phrases : [];
+    };
+
+    const renderList = (phrases) => {
+        list.replaceChildren();
+        phrases.forEach((phrase) => {
+            const item = createElement("li", "");
+            const remove = createElement("button", "button button-small", "Remove");
+            remove.type = "button";
+            remove.setAttribute("aria-label", `Remove phrase ${phrase}`);
+            remove.addEventListener("click", () => {
+                const next = currentPhrases().filter((entry) => entry !== phrase);
+                onConfigChange(DETECTOR_TYPE.PHRASE, { phrases: next });
+                renderList(next);
+                refreshStatus();
+            });
+            item.append(createElement("span", "", phrase), remove);
+            list.append(item);
+        });
+        if (phrases.length === 0) {
+            list.append(createElement("li", "builder-empty", "No phrases yet."));
+        }
+    };
+    renderList(currentPhrases());
+
+    const input = createElement("input", "text-input");
+    input.type = "text";
+    input.id = "builder-phrase-input";
+    input.placeholder = "you won't believe this";
+    input.autocomplete = "off";
+    const addRow = createElement("div", "builder-add-row");
+    const addButton = createElement("button", "button", "Add phrase");
+    addButton.type = "button";
+    const commitAdd = () => {
+        const value = input.value.trim();
+        if (value.length === 0) return;
+        const current = currentPhrases();
+        if (current.some((entry) => entry.toLowerCase() === value.toLowerCase())) {
+            input.value = "";
+            return;
+        }
+        const next = [...current, value];
+        onConfigChange(DETECTOR_TYPE.PHRASE, { phrases: next });
+        renderList(next);
+        refreshStatus();
+        input.value = "";
+        input.focus();
+    };
+    addButton.addEventListener("click", commitAdd);
+    input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            commitAdd();
+        }
+    });
+    addRow.append(input, addButton);
+    wrap.append(label, list, addRow);
+    return wrap;
+}
+
+function createBuilderSection(descriptor, liveConfig, onConfigChange) {
+    const { type, title } = descriptor;
+    const details = createElement("details", "builder-section");
+    details.dataset.detector = type;
+    const summary = createElement("summary", "builder-summary");
+    const status = createElement("span", "builder-status", "");
+    summary.append(createElement("span", "builder-name", title), status);
+    details.append(summary);
+
+    const body = createElement("div", "builder-controls");
+    // liveConfig is shared by reference and mutated in place by
+    // the card's change handler, so sections always read fresh
+    // values without a re-render.
+    const configRef = () => liveConfig;
+    const refreshStatus = () => {
+        const options = resolveSectionConfig(liveConfig, type);
+        if (options.enabled !== true) {
+            status.textContent = "Off";
+            return;
+        }
+        // A term-based detector with no terms is effectively
+        // idle (runDetectors skips empty term lists); say so.
+        const terms = type === DETECTOR_TYPE.KEYWORD ? (options.keywords || [])
+            : type === DETECTOR_TYPE.PHRASE ? (options.phrases || [])
+            : null;
+        const idle = Array.isArray(terms) && terms.length === 0 ? " · no terms" : "";
+        status.textContent = `On · ${describeSensitivity(options.sensitivity)}${idle}`;
+    };
+
+    const options = resolveSectionConfig(liveConfig, type);
+    body.append(createEnableRow(type, title, options, onConfigChange, refreshStatus));
+    body.append(createSensitivityFieldset(type, options, onConfigChange, refreshStatus));
+    body.append(createElement("p", "builder-note", descriptor.blurb));
+    if (descriptor.vocabulary) {
+        body.append(createVocabularyNote(descriptor.vocabulary, descriptor.vocabNote));
+    }
+    if (descriptor.fixedNote) {
+        body.append(createElement("p", "builder-note", descriptor.fixedNote));
+    }
+    if (descriptor.input === "keyword") {
+        body.append(createKeywordInput(options, onConfigChange, refreshStatus));
+    }
+    if (descriptor.input === "phrase") {
+        body.append(createPhraseList(configRef, onConfigChange, refreshStatus));
+    }
+    refreshStatus();
+    details.append(body);
+    return details;
+}
+
+function createBuilderCard(config, onConfigChange) {
+    const card = createElement("article", "card");
+    card.dataset.section = "analysis-builder";
+    card.append(createElement("h2", "card-title", "What are you looking for?"));
+    card.append(createElement("p", "card-body",
+        "Choose which detectors run when you tap Run analysis. " +
+        "The builder only configures the analysis — matching and scoring stay in the detector layer."));
+    // Shared, mutable view of the committed config: every
+    // section reads and writes through this one object, so
+    // handlers never close over stale state. The canonical
+    // config itself lives in app state (see onConfigChange).
+    const liveConfig = { ...(config || {}) };
+    const wrappedOnChange = (type, patch) => {
+        liveConfig[type] = { ...(liveConfig[type] || {}), ...patch };
+        onConfigChange(type, patch);
+    };
+    for (const descriptor of BUILDER_SECTIONS) {
+        card.append(createBuilderSection(descriptor, liveConfig, wrappedOnChange));
+    }
+    return card;
+}
+
 // Every evidence item is shown with its traceability: type,
 // provenance, reliability, transcript id, and segment ids.
 // Detector evidence additionally shows which detector fired,
@@ -146,9 +440,11 @@ function createResultsCard(request, result) {
 /**
  * @param {HTMLElement} mountElement
  * @param {object|null} project
- * @param {object|null} [analysisView]  { analysis, onAnalyze }.
+ * @param {object|null} [analysisView]  { analysis, onAnalyze, builder }.
  *        analysis: { status: "idle"|"running"|"done"|"error", request?, result?, error? }.
- *        Omitted → scope controls only (read-only rendering).
+ *        builder: { config, onConfigChange } | null — the analysis
+ *        builder card. Omitted → scope controls only.
+ *        Omitted entirely → scope controls only (read-only rendering).
  */
 export function renderAnalysisView(mountElement, project, analysisView = null) {
     const transcript = project ? project.transcript : null;
@@ -159,8 +455,15 @@ export function renderAnalysisView(mountElement, project, analysisView = null) {
 
     const analysis = (analysisView && analysisView.analysis) || { status: "idle" };
     const onAnalyze = (analysisView && analysisView.onAnalyze) || (() => {});
+    const builder = analysisView && analysisView.builder;
 
     const sections = [createScopeCard(transcript, onAnalyze)];
+    if (builder) {
+        sections.push(createBuilderCard(
+            builder.config || {},
+            typeof builder.onConfigChange === "function" ? builder.onConfigChange : () => {}
+        ));
+    }
     const statusCard = createStatusCard(analysis);
     if (statusCard) sections.push(statusCard);
     if (analysis.status === "done" && analysis.request && analysis.result) {

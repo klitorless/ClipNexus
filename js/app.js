@@ -51,6 +51,7 @@ import { createInfoCard } from "./ui/dom.js";
 import { createAnalyzer } from "./analysis/analyzer.js";
 import { createAnalysisRequest } from "./analysis/contracts.js";
 import { createDetectorExtractor } from "./analysis/detectors/extractor.js";
+import { validateAnalysisConfig } from "./analysis/detectors/index.js";
 import { createPlayerCoordinator } from "./video/player/coordinator.js";
 import { youtubePlayerDriver } from "./video/player/drivers/youtube.js";
 import { renderClipsView } from "./ui/clips.js";
@@ -135,7 +136,11 @@ function renderView(routeId) {
     });
     else if (routeId === "analysis") renderAnalysisView(elements.content, project, {
         analysis: getAnalysis(),
-        onAnalyze: handleAnalyze
+        onAnalyze: handleAnalyze,
+        builder: {
+            config: getAnalysisConfig(),
+            onConfigChange: handleAnalysisConfigChange
+        }
     });
     else if (routeId === "clips") renderClipsRoute();
     else renderPlaceholderView(elements.content, routeId);
@@ -595,7 +600,32 @@ function handleExportTranscript() {
 // ranking — detectors produce explainable signals as
 // Stage 3 evidence; reconciliation into POIs/events happens
 // in the existing downstream architecture.
-const analyzer = createAnalyzer({ extract: createDetectorExtractor() });
+//
+// The detector configuration lives in ui state
+// (ui.analysisConfig, partial — resolveDetectorConfig()
+// fills the defaults). The Analysis builder card edits it;
+// each run constructs a fresh extractor from the current
+// config, so there is exactly one analysis execution path.
+
+// Canonical detector config, as edited by the Analysis
+// builder. Partial: detectors not mentioned fall back to
+// DEFAULT_DETECTOR_CONFIG.
+function getAnalysisConfig() {
+    const ui = state.get("ui");
+    return (ui && ui.analysisConfig) || {};
+}
+
+function handleAnalysisConfigChange(detectorType, patch) {
+    const ui = state.get("ui") || {};
+    const current = ui.analysisConfig || {};
+    const next = {
+        ...current,
+        [detectorType]: { ...(current[detectorType] || {}), ...patch }
+    };
+    // ui-only state: the subscriber re-renders on route/project
+    // changes only, so builder inputs never lose focus here.
+    state.set("ui", { ...ui, analysisConfig: next });
+}
 
 function getAnalysis() {
     const ui = state.get("ui");
@@ -643,10 +673,20 @@ async function handleAnalyze({ scopeType, chunkId }) {
         refreshAnalysisView();
         return;
     }
+    const config = getAnalysisConfig();
+    const validation = validateAnalysisConfig(config);
+    if (!validation.ok) {
+        setAnalysis({ status: "error", error: validation.error });
+        refreshAnalysisView();
+        return;
+    }
     setAnalysis({ status: "running" });
     refreshAnalysisView();
     try {
         const request = buildAnalysisRequest(transcript, scopeType, chunkId);
+        // One execution path: a fresh extractor per run, built
+        // from the builder's canonical config.
+        const analyzer = createAnalyzer({ extract: createDetectorExtractor(config) });
         const result = await analyzer.analyze(request, transcript);
         setAnalysis({ status: "done", request, result });
     } catch (error) {

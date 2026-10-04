@@ -148,3 +148,30 @@ not have. Signals stay traceable to one segment; events group
 signals; POIs reference evidence; ClipSpecs reference POIs.
 Collapsing those layers would destroy the evidence chain the
 whole architecture is built to preserve.
+
+---
+
+## Analysis Builder (UI configuration)
+
+The Analysis tab's "What are you looking for?" builder is a
+pure configuration layer over the config above. It exposes,
+per detector: an enable checkbox, a Low/Normal/High
+sensitivity control, plus the keyword text field and the
+custom-phrase add/remove list. Fixed vocabularies (question
+words, hype phrases, reaction phrases) are shown read-only,
+imported from the detector modules — the UI never
+re-implements matching or scoring.
+
+Config lives in app state (`ui.analysisConfig`, partial —
+`resolveDetectorConfig()` fills defaults) and each run
+builds a fresh extractor from it, so there is exactly one
+analysis execution path. `validateAnalysisConfig()` rejects
+empty runs ("Select at least one analysis type to search
+for.") and explicitly-enabled-but-empty keyword/phrase
+detectors; untouched defaults keep the historical silent
+skip. Results remain canonical Stage 3 Evidence.
+
+Deliberately not exposed (the detectors do not support
+them): per-phrase toggles, custom hype/reaction/question
+phrases, case/whole-word switches (always on), emphasis
+sub-toggles, and minimum-repetition settings.
