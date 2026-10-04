@@ -33,11 +33,21 @@
 // headers via Access-Control-Expose-Headers. OPTIONS is handled.
 //
 // No API keys, no Supadata, no video download, no scraping of
-// video content, no transcript storage (no KV/R2/D1), no logging
-// of transcript contents. Only the video ID (and an optional
-// language code) is accepted from the caller; arbitrary upstream
-// URLs can never be supplied.
+// video content, no logging of transcript contents. Only the
+// video ID (and an optional language code) is accepted from the
+// caller; arbitrary upstream URLs can never be supplied.
+// The async caption-job queue (see queue.js) keeps per-job
+// status and the resulting WebVTT in KV for one hour so the
+// client can poll; nothing else is stored.
 // ============================================================
+
+import {
+    createJob,
+    getJob,
+    publicJobStatus,
+    processJobMessage,
+    MAX_BACKLOG
+} from "./queue.js";
 
 const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
 const LANG_PATTERN = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
@@ -107,8 +117,8 @@ export function optionsResponse() {
     return new Response(null, {
         status: 204,
         headers: corsHeaders({
-            "Access-Control-Allow-Methods": "GET, OPTIONS",
-            "Access-Control-Allow-Headers": "Accept",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Accept, Content-Type",
             "Access-Control-Max-Age": "86400"
         })
     });
@@ -395,42 +405,17 @@ async function fetchWithTimeout(fetchImpl, url, init = {}, timeoutMs = FETCH_TIM
 }
 
 /**
- * Build the request handler. fetchImpl defaults to the global
- * fetch (the Workers runtime); tests inject a mock.
+ * Core caption retrieval, shared by the synchronous endpoint
+ * and the queue consumer: gather tracks (InnerTube, then watch
+ * page), pick one deterministically, fetch it verbatim, and
+ * convert timed-text XML to WebVTT when needed.
+ *
+ * Returns { ok: true, vtt, meta } or
+ * { ok: false, errorType, message, httpStatus }.
+ * meta.videoTitle is the RAW title (unencoded); callers
+ * percent-encode it for the X-Video-Title header.
  */
-export function createRequestHandler({ fetchImpl = fetch, timeoutMs = FETCH_TIMEOUT_MS } = {}) {
-    return async function handleRequest(request) {
-        const url = new URL(request.url);
-        const method = String(request.method || "GET").toUpperCase();
-
-        if (method === "OPTIONS") return optionsResponse();
-
-        if (url.pathname !== "/youtube-transcript") {
-            return jsonError("not-found", "Use GET /youtube-transcript?v=VIDEO_ID.", 404);
-        }
-
-        if (method !== "GET") {
-            return jsonError("not-found", "Only GET and OPTIONS are supported.", 405);
-        }
-
-        const videoId = url.searchParams.get("v");
-        if (!videoId || !VIDEO_ID_PATTERN.test(videoId)) {
-            return jsonError(
-                "invalid-video-id",
-                "The v parameter must be an 11-character YouTube video ID.",
-                400
-            );
-        }
-
-        const lang = url.searchParams.get("lang");
-        if (lang !== null && !LANG_PATTERN.test(lang)) {
-            return jsonError(
-                "invalid-language",
-                "The lang parameter must be a BCP 47 language code.",
-                400
-            );
-        }
-
+export async function retrieveCaptions(videoId, lang, fetchImpl, timeoutMs = FETCH_TIMEOUT_MS) {
         // 1. Gather caption tracks: InnerTube first, watch page as fallback.
         let tracks = null;
         let mechanism = null;
@@ -467,18 +452,19 @@ export function createRequestHandler({ fetchImpl = fetch, timeoutMs = FETCH_TIME
                 "retrieval-failure": ["retrieval-failure", "Could not retrieve caption information from YouTube.", 502]
             };
             const [type, message, status] = messages[softFailure] || messages["retrieval-failure"];
-            return jsonError(type, message, status);
+            return { ok: false, errorType: type, message, httpStatus: status };
         }
 
         const track = selectTrack(tracks, lang);
         if (!track) {
-            return jsonError(
-                "track-unavailable",
-                lang
+            return {
+                ok: false,
+                errorType: "track-unavailable",
+                message: lang
                     ? `YouTube has no usable caption track matching "${lang}".`
                     : "YouTube listed no usable caption track for this video.",
-                404
-            );
+                httpStatus: 404
+            };
         }
 
         // 2. Verify the track URL, then fetch it VERBATIM.
@@ -488,14 +474,10 @@ export function createRequestHandler({ fetchImpl = fetch, timeoutMs = FETCH_TIME
         try {
             trackHost = new URL(track.baseUrl).hostname;
         } catch {
-            return jsonError("malformed-response", "The caption track URL was not a valid URL.", 502);
+            return { ok: false, errorType: "malformed-response", message: "The caption track URL was not a valid URL.", httpStatus: 502 };
         }
         if (!timedTextHostOk(trackHost)) {
-            return jsonError(
-                "malformed-response",
-                "The caption track URL was not a YouTube timedtext host.",
-                502
-            );
+            return { ok: false, errorType: "malformed-response", message: "The caption track URL was not a YouTube timedtext host.", httpStatus: 502 };
         }
         const trackUrl = `${track.baseUrl}&fmt=vtt`;
 
@@ -510,7 +492,7 @@ export function createRequestHandler({ fetchImpl = fetch, timeoutMs = FETCH_TIME
                 timeoutMs
             );
             if (res.status === 429) {
-                return jsonError("rate-limited", "YouTube is rate-limiting requests from this network.", 429);
+                return { ok: false, errorType: "rate-limited", message: "YouTube is rate-limiting requests from this network.", httpStatus: 429 };
             }
             if (!res.ok) {
                 const type = statusToErrorType(res.status);
@@ -518,7 +500,7 @@ export function createRequestHandler({ fetchImpl = fetch, timeoutMs = FETCH_TIME
                     "transcript-unavailable": "The caption track is no longer available.",
                     "retrieval-failure": `The caption track returned HTTP ${res.status}.`
                 };
-                return jsonError(type, messages[type], statusToHttpStatus(res.status));
+                return { ok: false, errorType: type, message: messages[type], httpStatus: statusToHttpStatus(res.status) };
             }
             const raw = await res.text();
             if (raw.replace(/^\uFEFF/, "").trimStart().startsWith("WEBVTT")) {
@@ -526,33 +508,237 @@ export function createRequestHandler({ fetchImpl = fetch, timeoutMs = FETCH_TIME
             } else {
                 const vtt = timedTextXmlToVtt(raw);
                 if (vtt === null) {
-                    return jsonError("malformed-response", "The caption track was not valid WebVTT.", 502);
+                    return { ok: false, errorType: "malformed-response", message: "The caption track was not valid WebVTT.", httpStatus: 502 };
                 }
                 body = vtt;
                 sourceFormat = "xml";
             }
         } catch (err) {
             const timedOut = isTimeoutError(err);
+            return {
+                ok: false,
+                errorType: timedOut ? "timeout" : "retrieval-failure",
+                message: timedOut ? "The caption track took too long to respond." : "Could not fetch the caption track.",
+                httpStatus: timedOut ? 504 : 502
+            };
+        }
+
+        return {
+            ok: true,
+            vtt: body,
+            meta: {
+                language: track.languageCode,
+                generated: !isManual(track),
+                source: mechanism || "unknown",
+                format: sourceFormat,
+                videoTitle,
+                videoDuration
+            }
+        };
+}
+
+/**
+ * Build the request handler. fetchImpl defaults to the global
+ * fetch (the Workers runtime); tests inject a mock.
+ *
+ * Queue routes need env.JOB_STORE (KV) and env.CAPTION_QUEUE
+ * (Queue producer). Without them POST /caption-jobs answers
+ * 501 so callers can fall back to the synchronous endpoint.
+ */
+export function createRequestHandler({ fetchImpl = fetch, timeoutMs = FETCH_TIMEOUT_MS } = {}) {
+
+    function bindings(env) {
+        const e = env || {};
+        return { store: e.JOB_STORE || null, queue: e.CAPTION_QUEUE || null };
+    }
+
+    async function handleEnqueue(request, env) {
+        const { store, queue } = bindings(env);
+        if (!store || !queue) {
             return jsonError(
-                timedOut ? "timeout" : "retrieval-failure",
-                timedOut ? "The caption track took too long to respond." : "Could not fetch the caption track.",
-                timedOut ? 504 : 502
+                "queue-unavailable",
+                "The caption queue is not configured on this Worker.",
+                501
+            );
+        }
+        let body = null;
+        try {
+            body = await request.json();
+        } catch {
+            return jsonError("invalid-request", "The request body must be JSON.", 400);
+        }
+        const videoId = body && body.v;
+        if (!videoId || !VIDEO_ID_PATTERN.test(videoId)) {
+            return jsonError(
+                "invalid-video-id",
+                "The v parameter must be an 11-character YouTube video ID.",
+                400
+            );
+        }
+        const lang = body && body.lang !== undefined ? body.lang : null;
+        if (lang !== null && !LANG_PATTERN.test(lang)) {
+            return jsonError(
+                "invalid-language",
+                "The lang parameter must be a BCP 47 language code.",
+                400
+            );
+        }
+        // Bound KV growth: refuse to pile up when the backlog is
+        // already deep instead of accepting work we cannot drain.
+        const pendingRaw = await store.get("queue:pending");
+        const pending = pendingRaw === null ? 0 : Number(pendingRaw);
+        if (Number.isFinite(pending) && pending >= MAX_BACKLOG) {
+            return jsonError(
+                "queue-full",
+                "The caption queue is full. Try again in a little while.",
+                429
+            );
+        }
+        let created = null;
+        try {
+            created = await createJob(store, queue, { videoId, lang });
+        } catch (err) {
+            // Pre-acceptance infrastructure failure: the job never
+            // entered the queue, so the caller may fall back to the
+            // synchronous endpoint.
+            if (err && err.code === "QUEUE_SEND_FAILED") {
+                return jsonError(
+                    "queue-unavailable",
+                    "The caption queue is not accepting requests right now.",
+                    503
+                );
+            }
+            throw err;
+        }
+        const { record, backlog } = created;
+        const status = await publicJobStatus(store, record);
+        return new Response(JSON.stringify({ job: status, backlog }), {
+            status: 202,
+            headers: corsHeaders({ "Content-Type": "application/json; charset=utf-8" })
+        });
+    }
+
+    async function handleJobStatus(jobId, env) {
+        const { store } = bindings(env);
+        if (!store) {
+            return jsonError("queue-unavailable", "The caption queue is not configured on this Worker.", 501);
+        }
+        const record = await getJob(store, jobId);
+        if (!record) {
+            return jsonError("job-not-found", "No caption job with that id.", 404);
+        }
+        const status = await publicJobStatus(store, record);
+        return new Response(JSON.stringify({ job: status }), {
+            status: 200,
+            headers: corsHeaders({ "Content-Type": "application/json; charset=utf-8" })
+        });
+    }
+
+    async function handleJobResult(jobId, env) {
+        const { store } = bindings(env);
+        if (!store) {
+            return jsonError("queue-unavailable", "The caption queue is not configured on this Worker.", 501);
+        }
+        const record = await getJob(store, jobId);
+        if (!record) {
+            return jsonError("job-not-found", "No caption job with that id.", 404);
+        }
+        if (record.status !== "completed") {
+            return jsonError(
+                "result-not-ready",
+                `The job is ${record.status}; no result is available yet.`,
+                409
+            );
+        }
+        const vtt = await store.get(`jobresult:${jobId}`, { type: "text" });
+        if (!vtt) {
+            return jsonError("result-expired", "The job result has expired.", 410);
+        }
+        const meta = record.resultMeta || {};
+        return vttResponse(vtt, {
+            language: meta.language,
+            generated: meta.generated,
+            source: meta.source,
+            format: meta.format,
+            videoTitle: meta.videoTitle ? encodeVideoTitle(meta.videoTitle) : null,
+            videoDuration: meta.videoDurationSeconds
+        });
+    }
+
+    return async function handleRequest(request, env = {}) {
+        const url = new URL(request.url);
+        const method = String(request.method || "GET").toUpperCase();
+
+        if (method === "OPTIONS") return optionsResponse();
+
+        if (url.pathname === "/caption-jobs" && method === "POST") {
+            return handleEnqueue(request, env);
+        }
+        const jobMatch = url.pathname.match(/^\/caption-jobs\/([^/]+)(\/result)?$/);
+        if (jobMatch && method === "GET") {
+            return jobMatch[2]
+                ? handleJobResult(jobMatch[1], env)
+                : handleJobStatus(jobMatch[1], env);
+        }
+
+        if (url.pathname !== "/youtube-transcript") {
+            return jsonError("not-found", "Use GET /youtube-transcript?v=VIDEO_ID.", 404);
+        }
+
+        if (method !== "GET") {
+            return jsonError("not-found", "Only GET and OPTIONS are supported.", 405);
+        }
+
+        const videoId = url.searchParams.get("v");
+        if (!videoId || !VIDEO_ID_PATTERN.test(videoId)) {
+            return jsonError(
+                "invalid-video-id",
+                "The v parameter must be an 11-character YouTube video ID.",
+                400
             );
         }
 
-        return vttResponse(body, {
-            language: track.languageCode,
-            generated: !isManual(track),
-            source: mechanism || "unknown",
-            format: sourceFormat,
-            videoTitle: encodeVideoTitle(videoTitle),
-            videoDuration: videoDuration
+        const lang = url.searchParams.get("lang");
+        if (lang !== null && !LANG_PATTERN.test(lang)) {
+            return jsonError(
+                "invalid-language",
+                "The lang parameter must be a BCP 47 language code.",
+                400
+            );
+        }
+
+        const outcome = await retrieveCaptions(videoId, lang, fetchImpl, timeoutMs);
+        if (!outcome.ok) {
+            return jsonError(outcome.errorType, outcome.message, outcome.httpStatus);
+        }
+        return vttResponse(outcome.vtt, {
+            language: outcome.meta.language,
+            generated: outcome.meta.generated,
+            source: outcome.meta.source,
+            format: outcome.meta.format,
+            videoTitle: encodeVideoTitle(outcome.meta.videoTitle),
+            videoDuration: outcome.meta.videoDuration
         });
     };
 }
 
 export default {
-    async fetch(request) {
-        return createRequestHandler()(request);
+    async fetch(request, env) {
+        return createRequestHandler()(request, env || {});
+    },
+    // Cloudflare Queue consumer: each message is one caption job.
+    // retrieveCaptions is the same core the synchronous endpoint
+    // uses — one retrieval implementation, two entry points.
+    async queue(batch, env) {
+        const store = env && env.JOB_STORE ? env.JOB_STORE : null;
+        const retrieve = (videoId, lang) => retrieveCaptions(videoId, lang, fetch);
+        for (const msg of batch.messages) {
+            if (!store) {
+                // Misconfigured: never let messages poison-loop.
+                msg.ack();
+                continue;
+            }
+            await processJobMessage(msg.body, { store, retrieve, msg });
+        }
     }
 };

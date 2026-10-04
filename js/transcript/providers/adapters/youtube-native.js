@@ -47,6 +47,14 @@
 // ==========================================================
 
 import { defineProvider, PROVIDER_STATUS, METHOD_PREFERENCE } from "../provider.js";
+import {
+    enqueueCaptionJob,
+    getCaptionJob,
+    fetchCaptionJobResult,
+    captionJobsBaseUrl,
+    isTerminalJobStatus,
+    CAPTION_JOB_STATUS
+} from "../../caption-jobs.js";
 import { ACQUISITION_ERROR_CODES as CODES } from "../errors.js";
 
 export const YOUTUBE_NATIVE_ID = "youtube-native";
@@ -90,8 +98,17 @@ function codeForHttpStatus(status) {
 }
 
 const DEFAULTS = Object.freeze({
-    requestDeadlineMs: 25000   // below the manager's 30 s timeout
+    requestDeadlineMs: 25000,  // below the manager's 30 s timeout
+    // Queue polling is conservative: once a job is accepted
+    // (HTTP 202) it is polled until it completes, fails, or a
+    // long abandonment deadline is reached. The job is never
+    // abandoned merely because it outlasts the old synchronous
+    // timeouts — acceptance is the point of no return.
+    queuePollIntervalMs: 5000,
+    queueAbandonAfterMs: 300000 // 5 minutes: the client-side abandonment condition
 });
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function looksLikeVtt(text) {
     return text.replace(/^\uFEFF/, "").trimStart().slice(0, 6) === "WEBVTT";
@@ -142,20 +159,65 @@ function workerErrorType(text) {
  * @param {object} deps
  * @param {(url:string, init:object) => Promise<Response>} [deps.fetchImpl]
  * @param {number} [deps.requestDeadlineMs]
+ * @param {number} [deps.queuePollIntervalMs]
+ * @param {number} [deps.queueAbandonAfterMs]
+ * @param {boolean} [deps.useCaptionQueue] — use the Worker's async
+ *   caption queue (with synchronous fallback when the Worker has
+ *   no queue configured). Default false: the direct endpoint,
+ *   byte-identical to the historical behavior.
  * @param {string} [deps.captionServiceUrl]
  */
-export function createYouTubeNativeProvider({ fetchImpl, requestDeadlineMs, captionServiceUrl } = {}) {
+export function createYouTubeNativeProvider({ fetchImpl, requestDeadlineMs, queuePollIntervalMs, queueAbandonAfterMs, useCaptionQueue = false, captionServiceUrl } = {}) {
     const doFetch = fetchImpl || ((url, init) => globalThis.fetch(url, init));
     const deadlineMs = requestDeadlineMs ?? DEFAULTS.requestDeadlineMs;
+    const pollIntervalMs = queuePollIntervalMs ?? DEFAULTS.queuePollIntervalMs;
+    const abandonAfterMs = queueAbandonAfterMs ?? DEFAULTS.queueAbandonAfterMs;
     const serviceUrl = captionServiceUrl || YOUTUBE_CAPTION_SERVICE_URL;
 
-    async function getTranscript(video, options = {}) {
-        if (!video || video.platform !== "youtube") return fail(CODES.UNSUPPORTED_VIDEO, {});
-        if (!video.videoId || !VIDEO_ID_PATTERN.test(video.videoId)) {
-            return fail(CODES.INVALID_REQUEST, { reason: "video has no valid YouTube id" });
+    // Shared success builder for both retrieval paths: the
+    // WebVTT body plus the service's X-Caption-* provenance
+    // headers (direct path) or the job result metadata (queue
+    // path) — same AdapterResponse shape either way.
+    function buildSuccess(body, getHeader, options, step) {
+        if (!looksLikeVtt(body)) {
+            return fail(CODES.MALFORMED_RESPONSE,
+                { reason: "caption service did not return WebVTT", httpStatus: 200, step });
+        }
+        if (!/-->/.test(body)) return fail(CODES.TRANSCRIPT_EMPTY, { step });
+
+        const generatedHeader = getHeader("X-Caption-Generated");
+        const method = generatedHeader === "true" ? "generated"
+            : generatedHeader === "false" ? "native" : "unknown";
+        // The service picks the track; an explicit method
+        // request can only be honored, never faked.
+        if (options.method === METHOD_PREFERENCE.NATIVE && method === "generated") {
+            return fail(CODES.TRANSCRIPT_UNAVAILABLE,
+                { reason: "the caption service returned only auto-generated captions", step });
+        }
+        if (options.method === METHOD_PREFERENCE.GENERATED && method === "native") {
+            return fail(CODES.TRANSCRIPT_UNAVAILABLE,
+                { reason: "the caption service returned only native captions", step });
         }
 
-        const requestUrl = `${serviceUrl}?v=${encodeURIComponent(video.videoId)}`;
+        const mechanism = getHeader("X-Caption-Source");
+        return {
+            success: true,
+            transcript: { rawText: body, format: "vtt" },
+            videoTitle: decodeVideoTitle(getHeader("X-Video-Title")),
+            videoDurationSeconds: decodeVideoDuration(getHeader("X-Video-Duration")),
+            source: {
+                method,
+                language: getHeader("X-Caption-Language"),
+                sourceId: mechanism ? `caption-service:${mechanism}` : "caption-service"
+            }
+        };
+    }
+
+    // The original synchronous retrieval: GET the Worker
+    // endpoint and read WebVTT directly. Kept as the fallback
+    // when the Worker has no queue configured.
+    async function fetchDirect(videoId, options) {
+        const requestUrl = `${serviceUrl}?v=${encodeURIComponent(videoId)}`;
         const controller = typeof AbortController === "function" ? new AbortController() : null;
         const timer = controller ? setTimeout(() => controller.abort(), deadlineMs) : null;
         try {
@@ -188,38 +250,7 @@ export function createYouTubeNativeProvider({ fetchImpl, requestDeadlineMs, capt
 
             const step = "caption-service";
             if (response.status === 200) {
-                if (!looksLikeVtt(body)) {
-                    return fail(CODES.MALFORMED_RESPONSE,
-                        { reason: "caption service did not return WebVTT", httpStatus: 200, step });
-                }
-                if (!/-->/.test(body)) return fail(CODES.TRANSCRIPT_EMPTY, { step });
-
-                const generatedHeader = headerValue(response.headers, "X-Caption-Generated");
-                const method = generatedHeader === "true" ? "generated"
-                    : generatedHeader === "false" ? "native" : "unknown";
-                // The service picks the track; an explicit method
-                // request can only be honored, never faked.
-                if (options.method === METHOD_PREFERENCE.NATIVE && method === "generated") {
-                    return fail(CODES.TRANSCRIPT_UNAVAILABLE,
-                        { reason: "the caption service returned only auto-generated captions", step });
-                }
-                if (options.method === METHOD_PREFERENCE.GENERATED && method === "native") {
-                    return fail(CODES.TRANSCRIPT_UNAVAILABLE,
-                        { reason: "the caption service returned only native captions", step });
-                }
-
-                const mechanism = headerValue(response.headers, "X-Caption-Source");
-                return {
-                    success: true,
-                    transcript: { rawText: body, format: "vtt" },
-                    videoTitle: decodeVideoTitle(headerValue(response.headers, "X-Video-Title")),
-                    videoDurationSeconds: decodeVideoDuration(headerValue(response.headers, "X-Video-Duration")),
-                    source: {
-                        method,
-                        language: headerValue(response.headers, "X-Caption-Language"),
-                        sourceId: mechanism ? `caption-service:${mechanism}` : "caption-service"
-                    }
-                };
+                return buildSuccess(body, (name) => headerValue(response.headers, name), options, step);
             }
 
             const type = workerErrorType(body);
@@ -234,6 +265,113 @@ export function createYouTubeNativeProvider({ fetchImpl, requestDeadlineMs, capt
         }
     }
 
+    // Queue retrieval: enqueue, poll the job status gently,
+    // then fetch the completed result. Reports progress via
+    // options.onCaptionJobUpdate when provided. Returns
+    // { fallback: true } when the Worker has no queue
+    // configured so the caller can use the direct endpoint.
+    async function fetchViaQueue(videoId, options) {
+        const notify = typeof options.onCaptionJobUpdate === "function"
+            ? options.onCaptionJobUpdate : null;
+        const baseUrl = captionJobsBaseUrl(serviceUrl);
+        const step = "caption-queue";
+
+        const enqueued = await enqueueCaptionJob({ baseUrl, videoId, fetchImpl: doFetch });
+        if (!enqueued.ok) {
+            if (enqueued.notConfigured) return { fallback: true };
+            const code = enqueued.error.type === "queue-full"
+                ? CODES.RATE_LIMITED : CODES.PROVIDER_UNAVAILABLE;
+            return fail(code, {
+                ...(enqueued.error.type ? { workerErrorType: enqueued.error.type } : {}),
+                step
+            });
+        }
+
+        const jobId = enqueued.job.id;
+        const snapshot = (job, phase) => ({
+            phase,
+            jobId,
+            status: job.status,
+            positionApproximate: job.positionApproximate ?? null,
+            backlog: job.backlog ?? null,
+            estimatedWaitSeconds: job.estimatedWaitSeconds ?? null
+        });
+        if (notify) notify(snapshot(enqueued.job, "queued"));
+
+        // Point of no return: the job was accepted (HTTP 202).
+        // Poll until it completes, fails terminally, or the
+        // client-side abandonment deadline is reached. NEVER
+        // fall back to the synchronous endpoint here — the job
+        // exists server-side and abandoning it would strand it.
+        const abandonAt = Date.now() + abandonAfterMs;
+        let last = enqueued.job;
+        while (Date.now() < abandonAt) {
+            await sleep(pollIntervalMs);
+            const checked = await getCaptionJob({ baseUrl, jobId, fetchImpl: doFetch });
+            if (!checked.ok) continue; // transient read failure: keep polling
+            last = checked.job;
+            if (isTerminalJobStatus(last.status)) break;
+            if (notify) notify(snapshot(last, last.status));
+        }
+
+        if (!isTerminalJobStatus(last.status)) {
+            if (notify) notify(snapshot(last, "abandoned"));
+            return fail(CODES.PROVIDER_TIMEOUT, {
+                reason: "queue-abandoned",
+                jobId,
+                deadlineMs: abandonAfterMs,
+                step
+            });
+        }
+        if (last.status === CAPTION_JOB_STATUS.FAILED) {
+            const type = last.error && last.error.type;
+            const code = (type && codeForWorkerErrorType(type)) || CODES.PROVIDER_UNAVAILABLE;
+            if (notify) notify(snapshot(last, "failed"));
+            return fail(code, { ...(type ? { workerErrorType: type } : {}), step });
+        }
+        if (notify) notify(snapshot(last, "completed"));
+        const result = await fetchCaptionJobResult({ baseUrl, jobId, fetchImpl: doFetch });
+        if (!result.ok) {
+            return fail(CODES.PROVIDER_UNAVAILABLE, { reason: "job result unreadable", step });
+        }
+        // The job-result metadata uses short keys; buildSuccess
+        // reads X-Caption-* header names, so translate here.
+        const headerFor = (name) => {
+            switch (name) {
+                case "X-Caption-Generated": return result.meta.generated;
+                case "X-Caption-Source": return result.meta.source;
+                case "X-Caption-Language": return result.meta.language;
+                case "X-Caption-Format": return result.meta.format;
+                case "X-Video-Title": return result.meta.videoTitle;
+                case "X-Video-Duration": return result.meta.videoDuration;
+                default: return null;
+            }
+        };
+        return buildSuccess(result.vtt, headerFor, options, step);
+    }
+
+    async function getTranscript(video, options = {}) {
+        if (!video || video.platform !== "youtube") return fail(CODES.UNSUPPORTED_VIDEO, {});
+        if (!video.videoId || !VIDEO_ID_PATTERN.test(video.videoId)) {
+            return fail(CODES.INVALID_REQUEST, { reason: "video has no valid YouTube id" });
+        }
+
+        // The async caption queue is opt-in per instance: the app
+        // enables it, while the historical direct endpoint remains
+        // the default. When enabled, prefer the queue but fall back
+        // to the synchronous endpoint when the Worker has no queue
+        // configured (501) — the app keeps working before the
+        // Worker is redeployed with queue support. The queue is
+        // real server-side state, never a frontend simulation.
+        if (useCaptionQueue) {
+            const notify = typeof options.onCaptionJobUpdate === "function"
+                ? options.onCaptionJobUpdate : null;
+            const queued = await fetchViaQueue(video.videoId, options);
+            if (!queued.fallback) return queued;
+            if (notify) notify({ phase: "direct", mode: "synchronous-fallback" });
+        }
+        return fetchDirect(video.videoId, options);
+    }
     return defineProvider({
         id: YOUTUBE_NATIVE_ID,
         name: "YouTube native captions",
@@ -251,5 +389,7 @@ export function createYouTubeNativeProvider({ fetchImpl, requestDeadlineMs, capt
     });
 }
 
-// The app's instance: real fetch, no credential, the configured service.
-export const provider = createYouTubeNativeProvider();
+// The app's instance: real fetch, no credential, the configured
+// service, and the async caption queue (with synchronous
+// fallback while the Worker has no queue bindings).
+export const provider = createYouTubeNativeProvider({ useCaptionQueue: true });

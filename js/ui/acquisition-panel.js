@@ -22,6 +22,66 @@ import { getPlatformLabel } from "../video/video-resolver.js";
 
 const yesNo = (flag) => (flag ? "yes" : "no");
 
+// ---------- Caption queue status ----------
+//
+// Compact, honest status for the async caption request
+// queue. Renders from a captionJob snapshot produced by the
+// provider ({ phase, jobId, status, positionApproximate,
+// backlog, estimatedWaitSeconds }). Every number the backend
+// cannot determine is omitted rather than invented; wait
+// times are always labeled estimates, never promises.
+
+function describeQueuePhase(job) {
+    switch (job.phase) {
+        case "queued": return "Transcript request queued";
+        case "processing": return "Processing transcript request";
+        case "completed": return "Transcript request completed";
+        case "failed": return "Transcript request failed";
+        case "timeout": return "Transcript request is taking longer than expected";
+        case "abandoned": return "Transcript request timed out";
+        default: return null; // "direct" and unknown phases render nothing
+    }
+}
+
+export function createQueueStatus(captionJob) {
+    const box = createElement("div", "caption-queue-status");
+    box.dataset.section = "caption-queue-status";
+    box.setAttribute("role", "status");
+    if (!captionJob || typeof captionJob !== "object") return box;
+    const title = describeQueuePhase(captionJob);
+    if (!title) return box;
+    box.append(createElement("p", "queue-status-title", title));
+
+    const lines = [];
+    // "About N requests ahead": the pending counter is an
+    // approximation of queue depth, NOT an exact physical
+    // Cloudflare Queue position — word it that way.
+    if (captionJob.phase === "queued" &&
+        typeof captionJob.positionApproximate === "number") {
+        const ahead = Math.max(0, captionJob.positionApproximate - 1);
+        lines.push(ahead === 0
+            ? "Next in line"
+            : `About ${ahead} request${ahead === 1 ? "" : "s"} ahead`);
+    }
+    if (typeof captionJob.estimatedWaitSeconds === "number" &&
+        (captionJob.phase === "queued" || captionJob.phase === "processing")) {
+        lines.push(`Estimated wait: ~${captionJob.estimatedWaitSeconds} seconds (estimate)`);
+    }
+    if (captionJob.phase === "failed") {
+        lines.push("The request failed. You can try again or use another provider.");
+    }
+    if (captionJob.phase === "timeout") {
+        lines.push("Still waiting — the request may still complete.");
+    }
+    if (captionJob.phase === "abandoned") {
+        lines.push("The request took too long. It may still be processing — try again later or use another provider.");
+    }
+    for (const line of lines) {
+        box.append(createElement("p", "queue-status-line", line));
+    }
+    return box;
+}
+
 // Honest availability (Stage 2B): registered ≠ implemented ≠ ready.
 // Derived for display only — not a provider state.
 export const AVAILABILITY = Object.freeze({
@@ -217,7 +277,7 @@ function createCredentialField(provider, ready, { onCredentialChange, onChanged,
  * @param {(providerId:string, value:string|null) => boolean} [input.onCredentialChange]  Stage 2B
  */
 export function createAcquisitionPanel({ project, acquisition, providers, onSelectionChange, onAcquire,
-    credentialReady = () => false, onCredentialChange = () => false }) {
+    credentialReady = () => false, onCredentialChange = () => false, captionJob = null }) {
     const card = createElement("article", "card acquisition-panel");
     card.dataset.section = "acquisition";
     card.append(
@@ -316,6 +376,12 @@ export function createAcquisitionPanel({ project, acquisition, providers, onSele
         card.append(createErrorView({ attempt, providers, hasTranscript: project.transcript !== null, onAcquire, credentialReady }));
     } else if (status === ACQUISITION_STATUS.SUCCESS) {
         card.append(createSuccessView(attempt));
+    }
+    // The async caption queue reports here while a job is
+    // active. Updated in place by the app (no full re-render)
+    // as the provider polls; cleared when the attempt ends.
+    if (captionJob) {
+        card.append(createQueueStatus(captionJob));
     }
     return card;
 }

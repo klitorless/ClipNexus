@@ -873,6 +873,94 @@
     font-variant-numeric: tabular-nums;
 }
 
+/* ---------- Caption queue status ---------- */
+
+.caption-queue-status {
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+}
+
+.queue-status-title {
+    font-weight: 600;
+    margin: 0 0 var(--space-1);
+}
+
+.queue-status-line {
+    font-size: var(--text-sm);
+    color: var(--muted);
+    margin: var(--space-1) 0 0;
+}
+
+/* ---------- Help page ---------- */
+
+.help-list {
+    margin: var(--space-2) 0;
+    padding-left: var(--space-5);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    font-size: var(--text-base);
+}
+
+.help-list li {
+    line-height: 1.5;
+}
+
+.learn-more-link {
+    display: inline-block;
+    margin-top: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--accent-strong);
+    text-decoration: none;
+}
+
+.learn-more-link:hover,
+.learn-more-link:focus-visible {
+    text-decoration: underline;
+}
+
+/* ---------- Site footer ---------- */
+.app-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-4);
+    margin-top: var(--space-6);
+    padding: var(--space-4) var(--space-1);
+    border-top: 1px solid var(--border);
+    font-size: var(--text-sm);
+    color: var(--muted);
+}
+
+.footer-brand {
+    font-weight: 700;
+    color: inherit;
+}
+
+.footer-links {
+    display: flex;
+    gap: var(--space-3);
+    margin-left: auto;
+}
+
+.footer-links a {
+    color: var(--muted);
+    text-decoration: none;
+}
+
+.footer-links a:hover,
+.footer-links a:focus-visible {
+    color: var(--accent-strong);
+    text-decoration: underline;
+}
+
+.footer-contact {
+    flex-basis: 100%;
+}
+
 /* ---------- Transcript acquisition panel ---------- */
 
 .acquisition-panel .card-title {

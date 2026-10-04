@@ -36,6 +36,7 @@ import { chunkDocument } from "./transcript/chunker.js";
 import { exportTranscript } from "./transcript/export.js";
 import { createFileAcquisition } from "./transcript/model.js";
 import { transcriptProviders, AUTOMATIC_PROVIDER_IDS } from "./transcript/providers/default-providers.js";
+import { YOUTUBE_NATIVE_ID } from "./transcript/providers/adapters/youtube-native.js";
 import { providerCredentials } from "./transcript/providers/credentials.js";
 import { acquireTranscript, acquireTranscriptWithFallback, applyAcquisitionToProject } from "./transcript/providers/manager.js";
 import { METHOD_PREFERENCE } from "./transcript/providers/provider.js";
@@ -43,9 +44,11 @@ import {
     createAcquisitionState, withSelection, beginAttempt, completeAttempt, resetAttempt, isCurrentAttemptResult
 } from "./transcript/providers/acquisition-state.js";
 import { renderSidebar, setActiveNavItem } from "./ui/sidebar.js";
+import { renderHelpView } from "./ui/help.js";
 import { renderDashboard } from "./ui/dashboard.js";
 import { DEV_DEFAULT_VIDEO_URL } from "./ui/project-panel.js";
 import { renderTranscriptsView } from "./ui/transcripts.js";
+import { createQueueStatus } from "./ui/acquisition-panel.js";
 import { renderAnalysisView } from "./ui/analysis.js";
 import { downloadTextFile } from "./ui/download.js";
 import { createInfoCard } from "./ui/dom.js";
@@ -134,7 +137,8 @@ function renderView(routeId) {
         onSelectionChange: handleAcquisitionSelection,
         onAcquire: handleAcquireTranscript,
         credentialReady: (providerId) => providerCredentials.has(providerId),
-        onCredentialChange: handleCredentialChange
+        onCredentialChange: handleCredentialChange,
+        captionJob: getCaptionJobState()
     }, {
         onExportTranscript: handleExportTranscript,
         exportNotice: getExportNotice()
@@ -156,6 +160,7 @@ function renderView(routeId) {
         });
     }
     else if (routeId === "clips") renderClipsRoute();
+    else if (routeId === "help") renderHelpView(elements.content);
     else renderPlaceholderView(elements.content, routeId);
 
     setActiveNavItem(elements.sidebar, routeId);
@@ -352,6 +357,29 @@ function getAcquisition() {
     return state.get("ui").transcriptAcquisition;
 }
 
+// The active caption queue job snapshot, if any. Ephemeral ui
+// state like the acquisition attempt: cleared when the
+// attempt completes.
+function getCaptionJobState() {
+    return state.get("ui").captionJob || null;
+}
+
+function setCaptionJobState(next) {
+    state.set("ui", { ...state.get("ui"), captionJob: next });
+}
+
+// Provider progress callback for queue-backed caption jobs.
+// Updates the queue-status component in place (no full
+// re-render: the provider keeps polling behind it).
+function handleCaptionJobUpdate(update) {
+    setCaptionJobState(update && typeof update === "object" ? update : null);
+    if (state.get("route") !== "transcripts") return;
+    const current = elements.content.querySelector('[data-section="caption-queue-status"]');
+    if (!current) return;
+    const fresh = createQueueStatus(getCaptionJobState());
+    current.replaceWith(fresh);
+}
+
 // Attempt state lives in state.ui (never in the project). Setting ui
 // does not re-render by itself, so views are refreshed explicitly.
 function setAcquisition(next) {
@@ -459,7 +487,15 @@ async function handleAcquireTranscript(override = {}) {
     refreshTranscriptsView();
 
     const result = await acquireTranscript({
-        registry: transcriptProviders, providerId, video: project ? project.video : null, options: { language, method }
+        registry: transcriptProviders, providerId, video: project ? project.video : null,
+        options: { language, method, onCaptionJobUpdate: handleCaptionJobUpdate },
+        // The caption queue is deliberately asynchronous: once a
+        // job is accepted (HTTP 202) the provider polls it for up
+        // to 5 minutes, and the manager's outer timeout must not
+        // kill that wait. Providers still enforce their own
+        // internal deadlines (25 s on the direct/Supadata paths),
+        // so the longer guard only affects the queue wait.
+        timeoutMs: providerId === YOUTUBE_NATIVE_ID ? QUEUED_ACQUIRE_TIMEOUT_MS : undefined
     });
 
     // The project may have changed while waiting; apply to the CURRENT one.
@@ -467,6 +503,7 @@ async function handleAcquireTranscript(override = {}) {
     const current = state.get("project");
     if (!isCurrentAttemptResult(getAcquisition(), attemptId, current, project)) return;
     const applied = applyAcquisitionToProject(current, result, buildAcquiredTranscript);
+    setCaptionJobState(null); // The queue job is terminal; its status served its purpose.
 
     if (applied.error) {
         console.warn("[VOD Analyzer] Transcript acquisition", applied.error.code, applied.error.detail);
@@ -499,6 +536,14 @@ async function handleAcquireTranscript(override = {}) {
 // (dashboardAcquisitionSeq), and a result is applied only to the
 // project it started for. Failures never touch the project.
 
+// The caption queue is deliberately asynchronous: once a job is
+// accepted the provider polls it for up to 5 minutes. The
+// manager's outer timeout must not kill that wait, so queue-
+// capable acquisitions get a longer guard. Providers still
+// enforce their own internal deadlines (25 s on the
+// direct/Supadata paths).
+const QUEUED_ACQUIRE_TIMEOUT_MS = 330000;
+
 let dashboardAcquisitionSeq = 0;
 
 // Persist the notice and, when the Dashboard is showing, update the
@@ -520,7 +565,8 @@ async function runDashboardAutoAcquisition(project, seq) {
         registry: transcriptProviders,
         providerIds: AUTOMATIC_PROVIDER_IDS,
         video: project.video,
-        options: { language: null, method: METHOD_PREFERENCE.ANY }
+        options: { language: null, method: METHOD_PREFERENCE.ANY },
+        timeoutMs: QUEUED_ACQUIRE_TIMEOUT_MS
     });
     if (seq !== dashboardAcquisitionSeq) return;                          // superseded by a newer load
     const current = state.get("project");

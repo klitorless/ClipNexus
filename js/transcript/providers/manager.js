@@ -68,7 +68,11 @@ export async function acquireTranscript({ registry, providerId, video, options =
 
     const request = Object.freeze({
         language: options.language ?? null,
-        method: options.method ?? METHOD_PREFERENCE.ANY
+        method: options.method ?? METHOD_PREFERENCE.ANY,
+        // Optional progress callback for queue-backed providers
+        // (e.g. youtube-native caption jobs). Not validated;
+        // providers that do not understand it ignore it.
+        onCaptionJobUpdate: options.onCaptionJobUpdate ?? null
     });
     const problem = checkRequest(provider, video, request);
     if (problem) return createAcquisitionFailure(problem, { providerId });

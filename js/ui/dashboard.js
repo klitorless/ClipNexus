@@ -32,6 +32,7 @@ function createStatusCard() {
         createElement(
             "p",
             "card-body",
+            "ClipNexus is a VOD analysis and clip-candidate discovery tool. " +
             "Load a YouTube video — ClipNexus automatically tries its YouTube captions first, " +
             "no API key needed. If no captions come back, add the transcript yourself: upload " +
             "a file, or fetch it with a provider on the Transcripts page. Transcripts are parsed into " +

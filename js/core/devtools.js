@@ -32,6 +32,7 @@ import { addAnalysisTests } from "./devtools-analysis-tests.js";
 import { addDetectorTests } from "./devtools-detector-tests.js";
 import { addAnalysisBuilderTests } from "./devtools-analysis-builder-tests.js";
 import { addAnalysisTimestampsTests } from "./devtools-analysis-timestamps-tests.js";
+import { addCaptionQueueTests } from "./devtools-caption-queue-tests.js";
 import { addChunkingTests } from "./devtools-chunking-tests.js";
 import { addAnalyzerIntegrationTests } from "./devtools-analyzer-tests.js";
 import { addStage4Tests } from "./devtools-stage4-tests.js";
@@ -195,6 +196,7 @@ function buildTests(appState) {
     addDetectorTests(add);
     addAnalysisBuilderTests(add);
     addAnalysisTimestampsTests(add);
+    addCaptionQueueTests(add);
 
     // Stage 2C: deterministic chunking + export.
     addChunkingTests(add);

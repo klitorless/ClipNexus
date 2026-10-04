@@ -183,6 +183,10 @@ function createYouTubeKeyField({ ready, onSave, onClear }) {
 
     group.append(createElement("p", "field-hint",
         "Shows the video's title next to its video ID. Without a key, ClipNexus keeps using the video ID and everything else works the same."));
+    const learnMore = createElement("a", "learn-more-link", "Learn more \u2192");
+    learnMore.href = "#help";
+    learnMore.setAttribute("aria-label", "Learn more about API keys");
+    group.append(learnMore);
     return group;
 }
 

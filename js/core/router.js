@@ -15,7 +15,8 @@ export const routes = [
     { id: "events", label: "Event Arcs" },
     { id: "clips", label: "Clip Queue" },
     { id: "analysis", label: "Analysis" },
-    { id: "settings", label: "Settings" }
+    { id: "settings", label: "Settings" },
+    { id: "help", label: "Help" }
 ];
 
 const defaultRoute = "dashboard";
