@@ -24,6 +24,16 @@
 export const JOB_TTL_SECONDS = 3600;
 export const MAX_ATTEMPTS = 3;
 export const MAX_BACKLOG = 100;
+// Fair-use spacing: 1 caption request per user every 10
+// minutes. Enforced at admission (each user's slot) and by
+// the consumer (never processes before a job's notBefore).
+// This is ClipNexus's own policy to stay within YouTube's
+// adaptive throttling — not a YouTube-published number.
+export const USER_SLOT_MS = 600000;
+export const USER_SLOT_KV_TTL = 3600;
+// Longest single retry delay the consumer will request while
+// waiting for a user's slot to open (11 min > 10 min slot).
+export const MAX_SLOT_RETRY_DELAY_S = 660;
 // Fallback per-job processing estimate (ms) until measured
 // averages exist. Reported wait times are always estimates.
 export const FALLBACK_JOB_MS = 8000;
@@ -46,6 +56,39 @@ export function createJobId() {
     crypto.getRandomValues(bytes);
     const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
     return `job_${Date.now().toString(36)}_${hex}`;
+}
+
+/**
+ * Hash a client IP for the per-user slot marker. The salt
+ * keeps the stored value from being a trivially reversible
+ * IP; raw IPs never touch KV.
+ */
+export async function hashClientIp(ip) {
+    const digest = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(`clipnexus-slot:v1:${ip}`)
+    );
+    return [...new Uint8Array(digest)]
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+}
+
+/**
+ * Claim this user's next 10-minute slot. Returns the
+ * earliest time (ms epoch) the new request may be processed.
+ * First request: now (immediate). Each following request:
+ * at least USER_SLOT_MS after the previously claimed slot,
+ * so one user's requests always space out even if they
+ * enqueue several at once.
+ */
+export async function claimUserSlot(store, ipHash, now = Date.now()) {
+    const key = `userslot:${ipHash}`;
+    const raw = await store.get(key);
+    const lastSlot = raw === null ? 0 : Number(raw);
+    const base = Number.isFinite(lastSlot) && lastSlot > 0 ? lastSlot : 0;
+    const notBefore = Math.max(now, base + USER_SLOT_MS);
+    await store.put(key, String(notBefore), { expirationTtl: USER_SLOT_KV_TTL });
+    return notBefore;
 }
 
 async function readCounter(store, key) {
@@ -108,8 +151,14 @@ export function estimateWaitSeconds(positionAtEnqueue, avgMs) {
 }
 
 /**
- * Create a job: persist the record, bump the backlog counter,
- * and send the message to the Queue. Returns { record, backlog }.
+ * Create a job: claim the user's slot, persist the record,
+ * bump the backlog counter, and send the message to the Queue.
+ * Returns { record, backlog }.
+ *
+ * notBefore is the user's 10-minute fair-use slot: the job is
+ * accepted immediately (HTTP 202) but the consumer will not
+ * process it before notBefore. The slot wait is visible to
+ * the client in the public status.
  *
  * If queue.send throws, the job never entered the queue: the
  * record is marked failed and the counter is decremented, so
@@ -117,7 +166,7 @@ export function estimateWaitSeconds(positionAtEnqueue, avgMs) {
  * the HTTP layer maps to 503 (pre-acceptance failure — the
  * caller may fall back to the synchronous endpoint).
  */
-export async function createJob(store, queue, { videoId, lang = null }) {
+export async function createJob(store, queue, { videoId, lang = null, notBefore = null }) {
     const id = createJobId();
     const now = Date.now();
     const pending = await readCounter(store, PENDING_KEY);
@@ -127,6 +176,10 @@ export async function createJob(store, queue, { videoId, lang = null }) {
         videoId,
         lang,
         status: JOB_STATUS.QUEUED,
+        // Earliest processing time (ms epoch) from the
+        // per-user 10-minute slot. Null = no slot (tests,
+        // requests without an identifiable client).
+        notBefore: typeof notBefore === "number" && notBefore > 0 ? notBefore : null,
         // Approximate: jobs ahead of this one when it was enqueued.
         // This is NOT a physical Cloudflare Queue position.
         positionAtEnqueue: pending + 1,
@@ -169,11 +222,24 @@ export async function publicJobStatus(store, record) {
         const avgMs = avgMsRaw === null ? null : Number(avgMsRaw);
         out.positionApproximate = record.positionAtEnqueue;
         out.backlog = backlog;
-        // Only report a wait estimate when real timing data
-        // exists. Without a measured average there is no
-        // meaningful number — omit it rather than invent one.
-        if (typeof avgMs === "number" && Number.isFinite(avgMs) && avgMs > 0) {
-            out.estimatedWaitSeconds = estimateWaitSeconds(record.positionAtEnqueue, avgMs);
+        // "Time til next request": the later of the queue-depth
+        // estimate and the user's 10-minute slot wait, so the
+        // displayed time always depicts the cooldown.
+        const slotWaitSeconds = typeof record.notBefore === "number"
+            ? Math.max(0, Math.ceil((record.notBefore - Date.now()) / 1000))
+            : 0;
+        if (slotWaitSeconds > 0) {
+            out.notBefore = record.notBefore;
+            out.slotWaitSeconds = slotWaitSeconds;
+        }
+        const hasAvg = typeof avgMs === "number" && Number.isFinite(avgMs) && avgMs > 0;
+        if (hasAvg || slotWaitSeconds > 0) {
+            // Only report a wait estimate when real timing data
+            // exists or a slot wait applies. Without either there
+            // is no meaningful number — omit it rather than
+            // invent one.
+            const avgBased = hasAvg ? estimateWaitSeconds(record.positionAtEnqueue, avgMs) : 0;
+            out.estimatedWaitSeconds = Math.max(avgBased, slotWaitSeconds);
             out.estimatedWaitNote = "Estimate only — not a guarantee.";
         }
     }
@@ -283,6 +349,16 @@ async function processJobMessageInner(message, { store, retrieve, msg }) {
     if (isTerminalStatus(record.status)) {
         msg.ack();
         return { outcome: "acked" };
+    }
+
+    // Fair-use slot: never process before the user's
+    // 10-minute slot opens. Requeue with a delay instead of
+    // burning an attempt or touching the counter — this is
+    // waiting, not failing.
+    if (typeof record.notBefore === "number" && Date.now() < record.notBefore) {
+        const waitSeconds = Math.ceil((record.notBefore - Date.now()) / 1000);
+        msg.retry({ delaySeconds: Math.min(Math.max(waitSeconds, 1), MAX_SLOT_RETRY_DELAY_S) });
+        return { outcome: "slot-wait" };
     }
 
     const startedAt = Date.now();

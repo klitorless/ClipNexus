@@ -118,9 +118,16 @@ export function addSupadataTests(add) {
         await acquire(registry, projectFor(), { language: "es", method: "native" });
         await acquire(registry, projectFor(), { method: "generated" });
         await acquire(registry, projectFor(), { method: "any" });
-        const urls = calls.map((call) => new URL(call.url));
-        const [first] = calls;
-        return calls.length === 3 && urls.every((url) => url.origin === "https://api.supadata.ai" &&
+        // Each acquisition is one transcript request plus one best-effort
+        // metadata request (title/duration for the video fields).
+        const transcriptCalls = calls.filter((call) => new URL(call.url).pathname === "/v1/transcript");
+        const metadataCalls = calls.filter((call) => new URL(call.url).pathname === "/v1/youtube/video");
+        const urls = transcriptCalls.map((call) => new URL(call.url));
+        const [first] = transcriptCalls;
+        return calls.length === 6 && transcriptCalls.length === 3 && metadataCalls.length === 3 &&
+            metadataCalls.every((call) => new URL(call.url).origin === "https://api.supadata.ai" &&
+                call.init.headers["x-api-key"] === TEST_KEY) &&
+            urls.every((url) => url.origin === "https://api.supadata.ai" &&
                 url.pathname === "/v1/transcript" && url.searchParams.get("text") === "false" &&
                 url.searchParams.get("url") === `https://www.youtube.com/watch?v=${videoId}`) &&
             urls.map((url) => url.searchParams.get("mode")).join() === "native,generate,auto" &&
@@ -229,8 +236,9 @@ export function addSupadataTests(add) {
             reply(200, { status: "completed", result: SAMPLE_BODY })
         ]);
         const result = await acquire(registry, projectFor());
-        return result.success === true && result.source.sourceId === "job-42" && calls.length === 4 &&
-            new URL(calls[1].url).pathname === "/v1/transcript/job-42" && calls[3].init.headers["x-api-key"] === TEST_KEY;
+        return result.success === true && result.source.sourceId === "job-42" && calls.length === 5 &&
+            new URL(calls[1].url).pathname === "/v1/transcript/job-42" && calls[3].init.headers["x-api-key"] === TEST_KEY &&
+            new URL(calls[4].url).pathname === "/v1/youtube/video";
     });
 
     add("supadata: failed or never-finishing job → controlled error", async () => {
@@ -316,6 +324,40 @@ export function addSupadataTests(add) {
             next.video.identity.videoId === videoId && next.video === project.video && next.video.startPosition.seconds === 90 &&
             next.transcript.acquisition.type === ACQUISITION_TYPE.PROVIDER &&
             next.transcript.source.format === "json" && project.transcript.source.filename === "vod.srt";
+    });
+
+    add("supadata: title/duration come along from the metadata endpoint for the video fields", async () => {
+        const meta = { title: "Never Gonna Give You Up", duration: 212, viewCount: 1500000000,
+            likeCount: 16000000, channel: { name: "Rick Astley" } };
+        const { registry, calls } = setup([reply(200, SAMPLE_BODY), reply(200, meta)]);
+        const result = await acquire(registry, projectFor());
+        const metaUrl = new URL(calls[1].url);
+        return result.success === true && result.videoTitle === "Never Gonna Give You Up" &&
+            result.videoDurationSeconds === 212 &&
+            metaUrl.origin === "https://api.supadata.ai" && metaUrl.pathname === "/v1/youtube/video" &&
+            metaUrl.searchParams.get("id") === `https://www.youtube.com/watch?v=${videoId}` &&
+            calls[1].init.headers["x-api-key"] === TEST_KEY;
+    });
+
+    add("supadata: metadata is best-effort — its failure never fails the transcript", async () => {
+        const badMeta = setup([reply(200, SAMPLE_BODY), reply(500, { error: "internal-error" })]);
+        const ok = await acquire(badMeta.registry, projectFor());
+        const threw = setup([reply(200, SAMPLE_BODY), () => { throw new Error("boom"); }]);
+        const ok2 = await acquire(threw.registry, projectFor());
+        const partial = setup([reply(200, SAMPLE_BODY), reply(200, { viewCount: 10 })]);
+        const ok3 = await acquire(partial.registry, projectFor());
+        return ok.success === true && ok.videoTitle === null && ok.videoDurationSeconds === null &&
+            ok2.success === true && ok2.videoTitle === null &&
+            ok3.success === true && ok3.videoTitle === null;
+    });
+
+    add("supadata: string durations are accepted, junk metadata is dropped", async () => {
+        const strDur = setup([reply(200, SAMPLE_BODY), reply(200, { title: "  T  ", duration: "212" })]);
+        const a = await acquire(strDur.registry, projectFor());
+        const junk = setup([reply(200, SAMPLE_BODY), reply(200, { title: "", duration: -5 })]);
+        const b = await acquire(junk.registry, projectFor());
+        return a.success === true && a.videoTitle === "  T  " && a.videoDurationSeconds === 212 &&
+            b.success === true && b.videoTitle === null && b.videoDurationSeconds === null;
     });
 
     add("stale attempt: a late result from an older attempt is ignored (regression)", () => {

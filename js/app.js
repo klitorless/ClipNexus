@@ -37,6 +37,11 @@ import { exportTranscript } from "./transcript/export.js";
 import { createFileAcquisition } from "./transcript/model.js";
 import { transcriptProviders, AUTOMATIC_PROVIDER_IDS } from "./transcript/providers/default-providers.js";
 import { YOUTUBE_NATIVE_ID } from "./transcript/providers/adapters/youtube-native.js";
+import {
+    isCaptionLimitError,
+    CAPTION_LIMIT_EXPLAINER,
+    SUPADATA_BYPASS_EXPLAINER
+} from "./ui/caption-limit.js";
 import { providerCredentials } from "./transcript/providers/credentials.js";
 import { acquireTranscript, acquireTranscriptWithFallback, applyAcquisitionToProject } from "./transcript/providers/manager.js";
 import { METHOD_PREFERENCE } from "./transcript/providers/provider.js";
@@ -45,6 +50,7 @@ import {
 } from "./transcript/providers/acquisition-state.js";
 import { renderSidebar, setActiveNavItem } from "./ui/sidebar.js";
 import { renderHelpView } from "./ui/help.js";
+import { renderGuideView } from "./ui/guide.js";
 import { renderDashboard } from "./ui/dashboard.js";
 import { DEV_DEFAULT_VIDEO_URL } from "./ui/project-panel.js";
 import { renderTranscriptsView } from "./ui/transcripts.js";
@@ -161,6 +167,7 @@ function renderView(routeId) {
     }
     else if (routeId === "clips") renderClipsRoute();
     else if (routeId === "help") renderHelpView(elements.content);
+    else if (routeId === "guide") renderGuideView(elements.content);
     else renderPlaceholderView(elements.content, routeId);
 
     setActiveNavItem(elements.sidebar, routeId);
@@ -468,6 +475,25 @@ function applyTitleResult(projectId, platform, videoId, patch) {
     state.set("project", withVideoMetadata(current, patch));
 }
 
+// Provider video metadata (title, duration) is a side-channel on a
+// successful acquisition result — NOT provenance. Apply it to the
+// project's video fields only when no metadata is known yet; a stored
+// result is never overwritten. Used by both the manual Transcripts
+// flow and the Dashboard's automatic acquisition.
+function applyProviderVideoMetadata(project, result) {
+    const hasTitle = typeof result.videoTitle === "string" && result.videoTitle.length > 0;
+    const hasDuration = Number.isInteger(result.videoDurationSeconds) && result.videoDurationSeconds >= 0;
+    if (!(hasTitle || hasDuration)) return project;
+    if (!project || !project.video || project.video.metadata.status !== METADATA_STATUS.UNKNOWN) return project;
+    return withVideoMetadata(project, {
+        status: METADATA_STATUS.LOADED,
+        ...(hasTitle ? { title: result.videoTitle } : {}),
+        ...(hasDuration ? { durationSeconds: result.videoDurationSeconds } : {}),
+        provider: result.source.providerId,
+        retrievedAt: result.source.retrievedAt
+    });
+}
+
 // override.providerId: "Try Again" / "Try With <provider>" — an explicit
 // user choice. The chosen provider becomes the selection, so the form
 // and provenance always agree about which provider was used.
@@ -515,7 +541,11 @@ async function handleAcquireTranscript(override = {}) {
     setExportNotice(null); // The transcript was replaced; an earlier export notice no longer applies.
     setAnalysis({ status: "idle" }); // Earlier analysis results described a different transcript.
     const chunked = chunkTranscriptDocument(applied.project.transcript);
-    state.set("project", withTranscript(applied.project, chunked.document)); // triggers render
+    // Apply provider video metadata (title, duration) the same way the
+    // Dashboard's automatic acquisition does — only when no metadata is
+    // known yet; a stored result is never overwritten.
+    const withMeta = applyProviderVideoMetadata(applied.project, result);
+    state.set("project", withTranscript(withMeta, chunked.document)); // triggers render
     if (chunked.error) {
         showNoticeCard("Chunking failed",
             reportError(chunked.error, "Transcript acquisition"), "Warning", "tag");
@@ -537,12 +567,13 @@ async function handleAcquireTranscript(override = {}) {
 // project it started for. Failures never touch the project.
 
 // The caption queue is deliberately asynchronous: once a job is
-// accepted the provider polls it for up to 5 minutes. The
-// manager's outer timeout must not kill that wait, so queue-
-// capable acquisitions get a longer guard. Providers still
+// accepted the provider polls it until the job's fair-use slot
+// (1 request per user every 10 minutes) plus processing slack.
+// The manager's outer timeout must not kill that wait, so
+// queue-capable acquisitions get a longer guard. Providers still
 // enforce their own internal deadlines (25 s on the
 // direct/Supadata paths).
-const QUEUED_ACQUIRE_TIMEOUT_MS = 330000;
+const QUEUED_ACQUIRE_TIMEOUT_MS = 840000;
 
 let dashboardAcquisitionSeq = 0;
 
@@ -574,10 +605,15 @@ async function runDashboardAutoAcquisition(project, seq) {
 
     if (!result.success) {
         console.warn("[VOD Analyzer] Automatic transcript acquisition", result.error.code, result.error.detail);
+        // When the caption service is throttled, say why and name
+        // the bypass — "not reachable" alone doesn't help the user.
+        const limitNote = isCaptionLimitError(result.error)
+            ? ` ${CAPTION_LIMIT_EXPLAINER} ${SUPADATA_BYPASS_EXPLAINER}`
+            : "";
         updateDashboardNotice({
             ok: false,
-            message: `Automatic captions unavailable: ${result.error.message} ` +
-                "You can upload a file or use a provider key on the Transcripts page."
+            message: `Automatic captions unavailable: ${result.error.message}${limitNote} ` +
+                "You can also upload a file or use a provider key on the Transcripts page."
         });
         return;
     }
@@ -600,18 +636,9 @@ async function runDashboardAutoAcquisition(project, seq) {
     // has been acquired yet, so a key result is never overwritten and
     // this never re-triggers that flow.
     let projectForTranscript = applied.project;
-    const hasTitle = typeof result.videoTitle === "string" && result.videoTitle.length > 0;
-    const hasDuration = Number.isInteger(result.videoDurationSeconds) && result.videoDurationSeconds >= 0;
-    if ((hasTitle || hasDuration) &&
-        projectForTranscript.video && projectForTranscript.video.metadata.status === METADATA_STATUS.UNKNOWN) {
-        projectForTranscript = withVideoMetadata(projectForTranscript, {
-            status: METADATA_STATUS.LOADED,
-            ...(hasTitle ? { title: result.videoTitle } : {}),
-            ...(hasDuration ? { durationSeconds: result.videoDurationSeconds } : {}),
-            provider: result.source.providerId,
-            retrievedAt: result.source.retrievedAt
-        });
-    }
+    // Provider metadata (title, duration) applies only when no metadata is
+    // known yet — never overwrite a stored result (see applyProviderVideoMetadata).
+    projectForTranscript = applyProviderVideoMetadata(projectForTranscript, result);
 
     const chunked = chunkTranscriptDocument(projectForTranscript.transcript);
     // state.set("project") re-renders the Dashboard: the pipeline

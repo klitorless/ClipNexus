@@ -105,7 +105,10 @@ const DEFAULTS = Object.freeze({
     // abandoned merely because it outlasts the old synchronous
     // timeouts — acceptance is the point of no return.
     queuePollIntervalMs: 5000,
-    queueAbandonAfterMs: 300000 // 5 minutes: the client-side abandonment condition
+    queueAbandonAfterMs: 300000, // 5 minutes: the client-side abandonment condition
+    // Extra grace after a job's 10-minute fair-use slot opens,
+    // so slot-waiting jobs are never abandoned early.
+    queueSlotSlackMs: 180000
 });
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -161,17 +164,19 @@ function workerErrorType(text) {
  * @param {number} [deps.requestDeadlineMs]
  * @param {number} [deps.queuePollIntervalMs]
  * @param {number} [deps.queueAbandonAfterMs]
+ * @param {number} [deps.queueSlotSlackMs]
  * @param {boolean} [deps.useCaptionQueue] — use the Worker's async
  *   caption queue (with synchronous fallback when the Worker has
  *   no queue configured). Default false: the direct endpoint,
  *   byte-identical to the historical behavior.
  * @param {string} [deps.captionServiceUrl]
  */
-export function createYouTubeNativeProvider({ fetchImpl, requestDeadlineMs, queuePollIntervalMs, queueAbandonAfterMs, useCaptionQueue = false, captionServiceUrl } = {}) {
+export function createYouTubeNativeProvider({ fetchImpl, requestDeadlineMs, queuePollIntervalMs, queueAbandonAfterMs, queueSlotSlackMs, useCaptionQueue = false, captionServiceUrl } = {}) {
     const doFetch = fetchImpl || ((url, init) => globalThis.fetch(url, init));
     const deadlineMs = requestDeadlineMs ?? DEFAULTS.requestDeadlineMs;
     const pollIntervalMs = queuePollIntervalMs ?? DEFAULTS.queuePollIntervalMs;
     const abandonAfterMs = queueAbandonAfterMs ?? DEFAULTS.queueAbandonAfterMs;
+    const slotSlackMs = queueSlotSlackMs ?? DEFAULTS.queueSlotSlackMs;
     const serviceUrl = captionServiceUrl || YOUTUBE_CAPTION_SERVICE_URL;
 
     // Shared success builder for both retrieval paths: the
@@ -294,16 +299,22 @@ export function createYouTubeNativeProvider({ fetchImpl, requestDeadlineMs, queu
             status: job.status,
             positionApproximate: job.positionApproximate ?? null,
             backlog: job.backlog ?? null,
-            estimatedWaitSeconds: job.estimatedWaitSeconds ?? null
+            estimatedWaitSeconds: job.estimatedWaitSeconds ?? null,
+            notBefore: job.notBefore ?? null,
+            slotWaitSeconds: job.slotWaitSeconds ?? null
         });
         if (notify) notify(snapshot(enqueued.job, "queued"));
 
         // Point of no return: the job was accepted (HTTP 202).
         // Poll until it completes, fails terminally, or the
-        // client-side abandonment deadline is reached. NEVER
-        // fall back to the synchronous endpoint here — the job
-        // exists server-side and abandoning it would strand it.
-        const abandonAt = Date.now() + abandonAfterMs;
+        // client-side abandonment deadline is reached. The
+        // deadline stretches past the job's 10-minute fair-use
+        // slot, so slot-waiting jobs are never abandoned early.
+        // NEVER fall back to the synchronous endpoint here —
+        // the job exists server-side and abandoning it would
+        // strand it.
+        const slotOpensAt = typeof enqueued.job.notBefore === "number" ? enqueued.job.notBefore : 0;
+        const abandonAt = Math.max(Date.now() + abandonAfterMs, slotOpensAt + slotSlackMs);
         let last = enqueued.job;
         while (Date.now() < abandonAt) {
             await sleep(pollIntervalMs);

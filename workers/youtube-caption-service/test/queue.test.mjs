@@ -11,8 +11,11 @@ import {
     processJobMessage,
     createJobId,
     estimateWaitSeconds,
+    claimUserSlot,
+    hashClientIp,
     JOB_STATUS,
-    MAX_BACKLOG
+    MAX_BACKLOG,
+    USER_SLOT_MS
 } from "../src/queue.js";
 
 const VID = "dQw4w9WgXcQ";
@@ -56,6 +59,18 @@ function postJob(body, env) {
 function getPath(path, env) {
     const handler = createRequestHandler();
     return handler(new Request(`${BASE}${path}`, { method: "GET" }), env);
+}
+
+function postJobAs(body, env, clientIp) {
+    const handler = createRequestHandler();
+    const headers = { "Content-Type": "application/json" };
+    if (clientIp) headers["CF-Connecting-IP"] = clientIp;
+    const request = new Request(`${BASE}/caption-jobs`, {
+        method: "POST",
+        headers,
+        body: typeof body === "string" ? body : JSON.stringify(body)
+    });
+    return handler(request, env);
 }
 
 function fullEnv() {
@@ -448,5 +463,94 @@ describe("job id utilities", () => {
         assert.equal(estimateWaitSeconds(1, 5000), 0);
         assert.equal(estimateWaitSeconds(4, 6000), 18);
         assert.ok(estimateWaitSeconds(2, null) >= 0);
+    });
+});
+
+describe("per-user fair-use slots (1 request per 10 minutes)", () => {
+    it("hashClientIp is deterministic and never the raw IP", async () => {
+        const a = await hashClientIp("203.0.113.7");
+        const b = await hashClientIp("203.0.113.7");
+        const c = await hashClientIp("203.0.113.8");
+        assert.equal(a, b);
+        assert.match(a, /^[0-9a-f]{64}$/);
+        assert.ok(!a.includes("203.0.113.7"));
+        assert.notEqual(a, c);
+    });
+
+    it("first slot is immediate, next slots space 10 minutes apart", async () => {
+        const store = createMockStore();
+        const now = Date.now();
+        const first = await claimUserSlot(store, "hash-a", now);
+        assert.ok(Math.abs(first - now) < 1000);
+        const second = await claimUserSlot(store, "hash-a", now + 1000);
+        assert.ok(Math.abs(second - (first + USER_SLOT_MS)) < 1000);
+        // A different user is unaffected.
+        const other = await claimUserSlot(store, "hash-b", now + 1000);
+        assert.ok(Math.abs(other - (now + 1000)) < 1000);
+    });
+
+    it("enqueue stamps notBefore from the client IP slot", async () => {
+        const env = fullEnv();
+        const first = await (await postJobAs({ v: VID }, env, "203.0.113.7")).json();
+        // First request: slot is immediate (no wait to report).
+        const firstRecord = await getJob(env.JOB_STORE, first.job.id);
+        assert.equal(typeof firstRecord.notBefore, "number");
+        assert.ok(Math.abs(firstRecord.notBefore - Date.now()) < 2000);
+        const second = await (await postJobAs({ v: VID }, env, "203.0.113.7")).json();
+        const secondRecord = await getJob(env.JOB_STORE, second.job.id);
+        assert.ok(secondRecord.notBefore - firstRecord.notBefore >= USER_SLOT_MS - 2000);
+        assert.equal(typeof second.job.slotWaitSeconds, "number");
+        assert.ok(second.job.slotWaitSeconds > 500);
+    });
+
+    it("enqueue without a client IP skips the slot", async () => {
+        const env = fullEnv();
+        const { job } = await (await postJob({ v: VID }, env)).json();
+        assert.equal(job.notBefore, undefined);
+    });
+
+    it("consumer waits for the slot without burning an attempt", async () => {
+        const env = fullEnv();
+        const { job } = await (await postJobAs({ v: VID }, env, "203.0.113.7")).json();
+        // Push the slot into the future.
+        const raw = JSON.parse(env.JOB_STORE.data.get(`job:${job.id}`));
+        raw.notBefore = Date.now() + 600000;
+        env.JOB_STORE.data.set(`job:${job.id}`, JSON.stringify(raw));
+        const msg = createMockMsg();
+        const result = await processJobMessage(
+            { jobId: job.id, videoId: VID, lang: null },
+            { store: env.JOB_STORE, retrieve: okRetrieve(), msg }
+        );
+        assert.equal(result.outcome, "slot-wait");
+        assert.equal(msg.acked, false);
+        assert.ok(msg.retried && msg.retried.delaySeconds > 500);
+        assert.ok(msg.retried.delaySeconds <= 660);
+        const record = await getJob(env.JOB_STORE, job.id);
+        assert.equal(record.attempts, 0);
+        assert.equal(record.status, JOB_STATUS.QUEUED);
+        assert.equal(await env.JOB_STORE.get("queue:pending"), "1");
+    });
+
+    it("consumer processes once the slot is open", async () => {
+        const env = fullEnv();
+        const { job } = await (await postJobAs({ v: VID }, env, "203.0.113.7")).json();
+        const raw = JSON.parse(env.JOB_STORE.data.get(`job:${job.id}`));
+        raw.notBefore = Date.now() - 1000;
+        env.JOB_STORE.data.set(`job:${job.id}`, JSON.stringify(raw));
+        const result = await processJobMessage(
+            { jobId: job.id, videoId: VID, lang: null },
+            { store: env.JOB_STORE, retrieve: okRetrieve(), msg: createMockMsg() }
+        );
+        assert.equal(result.outcome, "completed");
+    });
+
+    it("status exposes the slot wait for the client", async () => {
+        const env = fullEnv();
+        await postJobAs({ v: VID }, env, "203.0.113.7");
+        const { job: second } = await (await postJobAs({ v: VID }, env, "203.0.113.7")).json();
+        const { job: status } = await (await getPath(`/caption-jobs/${second.id}`, env)).json();
+        assert.equal(typeof status.notBefore, "number");
+        assert.ok(status.slotWaitSeconds > 500);
+        assert.ok(status.estimatedWaitSeconds >= status.slotWaitSeconds);
     });
 });

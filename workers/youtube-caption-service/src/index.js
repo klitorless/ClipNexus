@@ -46,12 +46,21 @@ import {
     getJob,
     publicJobStatus,
     processJobMessage,
+    claimUserSlot,
+    hashClientIp,
     MAX_BACKLOG
 } from "./queue.js";
 
 const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
 const LANG_PATTERN = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 const FETCH_TIMEOUT_MS = 20000;
+// Polite spacing between queue-consumer requests to YouTube
+// (see the queue() handler). Not a YouTube-published number.
+const MESSAGE_SPACING_MS = 2000;
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
 // YouTube's own public InnerTube client key, embedded in
 // youtube.com's JavaScript. Public, not a private credential.
 const INNERTUBE_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8";
@@ -596,7 +605,16 @@ export function createRequestHandler({ fetchImpl = fetch, timeoutMs = FETCH_TIME
         }
         let created = null;
         try {
-            created = await createJob(store, queue, { videoId, lang });
+            // Fair use: 1 request per user every 10 minutes.
+            // The client IP (Cloudflare's CF-Connecting-IP) is
+            // hashed before storage; raw IPs never touch KV.
+            // Without an identifiable client (tests, direct
+            // deploys) the slot is skipped: notBefore stays null.
+            const clientIp = request.headers.get("CF-Connecting-IP");
+            const notBefore = clientIp
+                ? await claimUserSlot(store, await hashClientIp(clientIp))
+                : null;
+            created = await createJob(store, queue, { videoId, lang, notBefore });
         } catch (err) {
             // Pre-acceptance infrastructure failure: the job never
             // entered the queue, so the caller may fall back to the
@@ -729,15 +747,24 @@ export default {
     // Cloudflare Queue consumer: each message is one caption job.
     // retrieveCaptions is the same core the synchronous endpoint
     // uses — one retrieval implementation, two entry points.
+    //
+    // Polite spacing between messages: YouTube throttles
+    // automated caption requests adaptively and publishes no
+    // fixed cooldown, so the consumer spaces its requests
+    // instead of bursting. This is politeness, not a claimed
+    // YouTube cooldown number.
     async queue(batch, env) {
         const store = env && env.JOB_STORE ? env.JOB_STORE : null;
         const retrieve = (videoId, lang) => retrieveCaptions(videoId, lang, fetch);
+        let first = true;
         for (const msg of batch.messages) {
             if (!store) {
                 // Misconfigured: never let messages poison-loop.
                 msg.ack();
                 continue;
             }
+            if (!first) await sleep(MESSAGE_SPACING_MS);
+            first = false;
             await processJobMessage(msg.body, { store, retrieve, msg });
         }
     }

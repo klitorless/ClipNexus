@@ -19,6 +19,11 @@ import { LANGUAGE_OPTIONS } from "../transcript/languages.js";
 import { METHOD_PREFERENCE_OPTIONS, PROVIDER_STATUS } from "../transcript/providers/provider.js";
 import { ACQUISITION_STATUS } from "../transcript/providers/acquisition-state.js";
 import { getPlatformLabel } from "../video/video-resolver.js";
+import { YOUTUBE_NATIVE_ID } from "../transcript/providers/adapters/youtube-native.js";
+import {
+    CAPTION_LIMIT_EXPLAINER,
+    SUPADATA_BYPASS_EXPLAINER
+} from "./caption-limit.js";
 
 const yesNo = (flag) => (flag ? "yes" : "no");
 
@@ -53,17 +58,25 @@ export function createQueueStatus(captionJob) {
     box.append(createElement("p", "queue-status-title", title));
 
     const lines = [];
-    // "About N requests ahead": the pending counter is an
-    // approximation of queue depth, NOT an exact physical
+    // "About N requests ahead of yours": the pending counter is
+    // an approximation of queue depth, NOT an exact physical
     // Cloudflare Queue position — word it that way.
     if (captionJob.phase === "queued" &&
         typeof captionJob.positionApproximate === "number") {
         const ahead = Math.max(0, captionJob.positionApproximate - 1);
         lines.push(ahead === 0
             ? "Next in line"
-            : `About ${ahead} request${ahead === 1 ? "" : "s"} ahead`);
+            : `About ${ahead} request${ahead === 1 ? "" : "s"} ahead of yours`);
     }
-    if (typeof captionJob.estimatedWaitSeconds === "number" &&
+    // "Time til next request": depicts the cooldown — the later
+    // of the queue-depth estimate and the user's 10-minute
+    // fair-use slot. Always labeled an estimate.
+    if (typeof captionJob.slotWaitSeconds === "number" && captionJob.slotWaitSeconds > 0 &&
+        (captionJob.phase === "queued" || captionJob.phase === "processing")) {
+        const minutes = Math.max(1, Math.round(captionJob.slotWaitSeconds / 60));
+        lines.push(`Time til your request: ~${minutes} minute${minutes === 1 ? "" : "s"} ` +
+            `(1 request per 10 minutes — estimate)`);
+    } else if (typeof captionJob.estimatedWaitSeconds === "number" &&
         (captionJob.phase === "queued" || captionJob.phase === "processing")) {
         lines.push(`Estimated wait: ~${captionJob.estimatedWaitSeconds} seconds (estimate)`);
     }
@@ -169,6 +182,13 @@ function createErrorView({ attempt, providers, hasTranscript, onAcquire, credent
         const retryRow = createElement("div", "field-row acquire-actions");
         retryRow.append(retry);
         box.append(retryRow);
+    }
+
+    // When YouTube throttles the caption service, explain the
+    // limit and name the bypass — the raw error code doesn't.
+    if (attempt.providerId === YOUTUBE_NATIVE_ID && attempt.error.code === "RATE_LIMITED") {
+        box.append(createElement("p", "card-body",
+            `${CAPTION_LIMIT_EXPLAINER} ${SUPADATA_BYPASS_EXPLAINER}`));
     }
 
     // Only providers that can actually run right now are offered.

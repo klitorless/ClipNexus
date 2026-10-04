@@ -403,8 +403,12 @@ export function addYouTubeNativeTests(add) {
         const result = await acquireTranscriptWithFallback({
             registry, providerIds: AUTOMATIC_PROVIDER_IDS, video: projectFor().video, options: {}
         });
+        // Supadata is tried once: one transcript request plus its
+        // best-effort metadata request (title/duration for the video fields).
+        const paths = supadataCalls.map((url) => new URL(url).pathname);
         return result.success === true && result.source.providerId === SUPADATA_ID &&
-            nativeCalls.length === 1 && supadataCalls.length === 1;
+            nativeCalls.length === 1 && supadataCalls.length === 2 &&
+            paths[0] === "/v1/transcript" && paths[1] === "/v1/youtube/video";
     });
 
     add("fallback: youtube-native success → Supadata is never called (no quota consumed)", async () => {

@@ -8,15 +8,20 @@
 import { state } from "./state.js";
 
 // Single source of truth for sections. The sidebar reads this too.
+// Order follows the working flow: Dashboard -> Transcripts ->
+// Analysis -> Clip Queue, then reference pages, then the
+// not-yet-built sections last so the tab order never jumps
+// over unbuilt tabs mid-flow.
 export const routes = [
     { id: "dashboard", label: "Dashboard" },
     { id: "transcripts", label: "Transcripts" },
+    { id: "analysis", label: "Analysis" },
+    { id: "clips", label: "Clip Queue" },
+    { id: "guide", label: "Guide" },
+    { id: "help", label: "Help" },
     { id: "pois", label: "POIs" },
     { id: "events", label: "Event Arcs" },
-    { id: "clips", label: "Clip Queue" },
-    { id: "analysis", label: "Analysis" },
-    { id: "settings", label: "Settings" },
-    { id: "help", label: "Help" }
+    { id: "settings", label: "Settings" }
 ];
 
 const defaultRoute = "dashboard";

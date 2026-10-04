@@ -15,8 +15,11 @@ import { provider as youtubeTranscriptApi } from "./adapters/youtube-transcript-
 // ClipNexus caption service (a Cloudflare Worker) for the video's
 // YouTube captions; where the service is unreachable it reports
 // PROVIDER_UNAVAILABLE and the app falls back to the next provider.
+// The async caption queue is enabled (with synchronous fallback
+// while the Worker has no queue bindings).
 const youtubeNative = createYouTubeNativeProvider({
-    fetchImpl: (url, init) => globalThis.fetch(url, init)
+    fetchImpl: (url, init) => globalThis.fetch(url, init),
+    useCaptionQueue: true
 });
 
 // The one real provider (Stage 2B): real fetch + the in-memory key store.

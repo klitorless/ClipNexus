@@ -24,9 +24,17 @@ import {
     createYouTubeNativeProvider,
     YOUTUBE_CAPTION_SERVICE_URL
 } from "../transcript/providers/adapters/youtube-native.js";
-import { createQueueStatus } from "../ui/acquisition-panel.js";
+import { createQueueStatus, createAcquisitionPanel } from "../ui/acquisition-panel.js";
+import { ACQUISITION_STATUS } from "../transcript/providers/acquisition-state.js";
+import {
+    isCaptionLimitError,
+    CAPTION_LIMIT_EXPLAINER,
+    SUPADATA_BYPASS_EXPLAINER
+} from "../ui/caption-limit.js";
+import { createSupadataProvider } from "../transcript/providers/adapters/supadata.js";
 import { createVideoUrlForm, DEV_DEFAULT_VIDEO_URL } from "../ui/project-panel.js";
 import { renderHelpView, SUPPORT_CONTACT } from "../ui/help.js";
+import { renderGuideView } from "../ui/guide.js";
 import { routes } from "../core/router.js";
 
 const VID = "dQw4w9WgXcQ";
@@ -133,6 +141,47 @@ export function addCaptionQueueTests(add) {
         const fetchImpl = async () => jsonResponse(503, { error: { type: "queue-unavailable" } });
         const result = await enqueueCaptionJob({ baseUrl: BASE, videoId: VID, fetchImpl });
         return result.ok === false && result.notConfigured === true;
+    });
+
+    add("queue: provider waits past the fair-use slot instead of abandoning", async () => {
+        // notBefore 40ms out, tiny abandonment + slack: the
+        // provider must still complete, not abandon.
+        let statusCalls = 0;
+        const fetchImpl = async (url, init = {}) => {
+            const method = (init.method || "GET").toUpperCase();
+            if (url.endsWith("/caption-jobs") && method === "POST") {
+                return jsonResponse(202, {
+                    job: {
+                        id: "job_test_0123456789abcdef",
+                        status: "queued",
+                        positionApproximate: 1,
+                        notBefore: Date.now() + 40,
+                        slotWaitSeconds: 1
+                    }
+                });
+            }
+            if (url.includes("/caption-jobs/") && url.endsWith("/result")) return vttResponse();
+            if (url.includes("/caption-jobs/")) {
+                statusCalls += 1;
+                return jsonResponse(200, {
+                    job: {
+                        id: "job_test_0123456789abcdef",
+                        status: statusCalls >= 3 ? "completed" : "queued"
+                    }
+                });
+            }
+            return vttResponse();
+        };
+        const provider = createYouTubeNativeProvider({
+            fetchImpl,
+            useCaptionQueue: true,
+            queuePollIntervalMs: 5,
+            queueAbandonAfterMs: 30,
+            queueSlotSlackMs: 500,
+            captionServiceUrl: `${BASE}/youtube-transcript`
+        });
+        const result = await provider.getTranscript(testVideo, { method: "any" });
+        return result.success === true && result.transcript.rawText.startsWith("WEBVTT");
     });
 
     add("queue: provider falls back to sync on 503 pre-acceptance", async () => {
@@ -267,7 +316,7 @@ export function addCaptionQueueTests(add) {
         });
         const text = node.textContent;
         return text.includes("Transcript request queued") &&
-            text.includes("About 3 requests ahead") &&
+            text.includes("About 3 requests ahead of yours") &&
             text.includes("Estimated wait:") &&
             text.includes("estimate") &&
             !text.includes("will complete");
@@ -290,6 +339,22 @@ export function addCaptionQueueTests(add) {
             failed.includes("Transcript request failed") &&
             timeout.includes("taking longer than expected") &&
             abandoned.includes("timed out");
+    });
+
+    add("queue: status shows time til request during the fair-use slot", () => {
+        const node = createQueueStatus({
+            phase: "queued",
+            jobId: "job_x",
+            status: "queued",
+            positionApproximate: 2,
+            slotWaitSeconds: 540,
+            estimatedWaitSeconds: 540
+        });
+        const text = node.textContent;
+        return text.includes("About 1 request ahead of yours") &&
+            text.includes("Time til your request") &&
+            text.includes("1 request per 10 minutes") &&
+            text.includes("estimate");
     });
 
     add("queue: direct phase renders nothing", () => {
@@ -338,5 +403,112 @@ export function addCaptionQueueTests(add) {
 
     add("queue: rickroll default is the expected URL", () => {
         return DEV_DEFAULT_VIDEO_URL === "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+    });
+
+    // ---------- rate-limit explanation ----------
+
+    add("limit: isCaptionLimitError matches youtube-native limit codes", () => {
+        const yn = "youtube-native";
+        return isCaptionLimitError({ providerId: yn, code: "RATE_LIMITED" }) &&
+            isCaptionLimitError({ providerId: yn, code: "PROVIDER_UNAVAILABLE" }) &&
+            !isCaptionLimitError({ providerId: yn, code: "TRANSCRIPT_UNAVAILABLE" }) &&
+            !isCaptionLimitError({ providerId: "supadata", code: "RATE_LIMITED" }) &&
+            !isCaptionLimitError(null);
+    });
+
+    add("limit: explainer claims no fixed cooldown number", () => {
+        return CAPTION_LIMIT_EXPLAINER.includes("varies") &&
+            !/\d+\s*(seconds|minutes)/.test(CAPTION_LIMIT_EXPLAINER);
+    });
+
+    add("limit: bypass cites verified free tier with pricing caveat", () => {
+        return SUPADATA_BYPASS_EXPLAINER.includes("100 credits per month") &&
+            SUPADATA_BYPASS_EXPLAINER.includes("1 credit") &&
+            SUPADATA_BYPASS_EXPLAINER.includes("pricing can change");
+    });
+
+    add("limit: error view explains the limit on youtube-native rate-limit", () => {
+        const project = { video: { platform: "youtube", videoId: VID } };
+        const acquisition = {
+            selection: { providerId: "youtube-native", language: null, method: "any" },
+            status: ACQUISITION_STATUS.ERROR,
+            attempt: {
+                providerId: "youtube-native",
+                providerName: "YouTube native captions",
+                error: { code: "RATE_LIMITED", message: "limited", retryable: true }
+            }
+        };
+        const panel = createAcquisitionPanel({
+            project, acquisition, providers: [],
+            onSelectionChange: () => {}, onAcquire: () => {}
+        });
+        const text = panel.textContent;
+        return text.includes("YouTube limits how often") &&
+            text.includes("100 credits per month");
+    });
+
+    add("limit: error view stays quiet for non-limit failures", () => {
+        const project = { video: { platform: "youtube", videoId: VID } };
+        const acquisition = {
+            selection: { providerId: "youtube-native", language: null, method: "any" },
+            status: ACQUISITION_STATUS.ERROR,
+            attempt: {
+                providerId: "youtube-native",
+                providerName: "YouTube native captions",
+                error: { code: "TRANSCRIPT_UNAVAILABLE", message: "none", retryable: false }
+            }
+        };
+        const panel = createAcquisitionPanel({
+            project, acquisition, providers: [],
+            onSelectionChange: () => {}, onAcquire: () => {}
+        });
+        return !panel.textContent.includes("YouTube limits how often");
+    });
+
+    add("limit: supadata description mentions the verified free tier", () => {
+        const provider = createSupadataProvider({ fetchImpl: async () => new Response("{}") });
+        return provider.description.includes("100 credits/month");
+    });
+
+    add("limit: help page documents rate limits and cooldowns", () => {
+        const mount = document.createElement("div");
+        renderHelpView(mount);
+        const text = mount.textContent;
+        return text.includes("YouTube rate limits & cooldowns") &&
+            text.includes("no fixed cooldown number") &&
+            text.includes("100 credits per month");
+    });
+
+    // ---------- how-to-use guide ----------
+
+    add("guide: route is registered", () => {
+        return routes.some((route) => route.id === "guide");
+    });
+
+    add("guide: tabs follow the working flow, unbuilt tabs last", () => {
+        const order = routes.map((route) => route.id).join(",");
+        return order === "dashboard,transcripts,analysis,clips,guide,help,pois,events,settings";
+    });
+
+    add("guide: walks through the six implemented steps", () => {
+        const mount = document.createElement("div");
+        renderGuideView(mount);
+        const text = mount.textContent;
+        return text.includes("Load a video") &&
+            text.includes("Get a transcript") &&
+            text.includes("Run analysis") &&
+            text.includes("Seek through evidence") &&
+            text.includes("Review clip candidates") &&
+            text.includes("not built yet");
+    });
+
+    add("guide: documents real controls, not aspirations", () => {
+        const mount = document.createElement("div");
+        renderGuideView(mount);
+        const text = mount.textContent;
+        return text.includes("What are you looking for?") &&
+            text.includes("Keep or Reject") &&
+            text.includes("deterministic JSON") &&
+            text.includes("planned, not present");
     });
 }

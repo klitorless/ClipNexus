@@ -57,11 +57,18 @@ export function renderHelpView(mountElement) {
     apiCard.append(createElement("p", "card-body",
         "ClipNexus works without any API key. The keyless caption service fetches " +
         "a video's existing YouTube captions, and everything else runs locally in " +
-        "your browser. You may still choose to provide your own YouTube Data API key:"));
+        "your browser. API keys exist mainly for transcripts: a Supadata key is a hosted " +
+        "transcript service — fetching transcripts is its whole purpose — and it bypasses " +
+        "YouTube's adaptive caption throttling. Whenever a transcript fetch succeeds, " +
+        "ClipNexus uses all the information the provider returns (video title, duration) " +
+        "to fill in the video fields; for Supadata that means one extra metadata request " +
+        "(1 credit) alongside the transcript."));
     const whyList = createElement("ul", "help-list");
     for (const text of [
-        "Why: the key lets ClipNexus show the video's title next to its video ID. " +
-        "Without a key, the app keeps using the video ID and everything else works the same.",
+        "YouTube Data API key: for the video's name only, and only if nothing else has " +
+        "already provided it. The caption services supply the title when they can; the " +
+        "Data API key is a fallback for when they cannot. Without a key, the app keeps " +
+        "using the video ID and everything else works the same.",
         "Where to get one: in the Google Cloud Console, create or select a project, " +
         "enable the YouTube Data API v3, then create an API key under Credentials. " +
         "Google controls issuance, pricing, and quotas — not ClipNexus.",
@@ -86,6 +93,31 @@ export function renderHelpView(mountElement) {
         "The queue smooths bursts against ClipNexus's caption service; YouTube's " +
         "own rate limits apply at the provider independently and can still reject " +
         "requests even when the queue is empty."
+    ]));
+
+    sections.push(bulletSection("YouTube rate limits & cooldowns",
+        "The keyless caption service asks YouTube for a video's captions " +
+        "directly. YouTube throttles automated requests to those endpoints — " +
+        "that throttle is the most common reason automatic captions fail. " +
+        "To stay within it, caption requests are limited to 1 per user " +
+        "every 10 minutes, and excess requests wait in a fair queue instead " +
+        "of being rejected.", [
+        "The limit is set by YouTube: it is adaptive, varies over time, and " +
+        "YouTube publishes no fixed cooldown number. ClipNexus does not " +
+        "invent one — any wait time shown is an estimate, never a promise.",
+        "While queued you see your position (“About N requests ahead of yours”) " +
+        "and the time until your request (“Time til your request”) — the later " +
+        "of the queue wait and your 10-minute slot.",
+        "When throttled, the caption queue backs off automatically " +
+        "(increasing delays between retries) and spaces its requests to " +
+        "YouTube politely. Waiting a while before retrying usually helps.",
+        "A Supadata API key bypasses this limit entirely, because Supadata " +
+        "fetches transcripts through its own service rather than YouTube's " +
+        "caption endpoints. Its free tier includes 100 credits per month " +
+        "(a native transcript costs 1 credit, no card required) — pricing " +
+        "can change, so check supadata.ai/pricing for current numbers. " +
+        "Enter your key on the Transcripts page; it stays in memory for " +
+        "this page session only."
     ]));
 
     sections.push(bulletSection("API-key security", null, [

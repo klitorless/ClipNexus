@@ -122,6 +122,44 @@ function normalizeTranscriptBody(body, { mode, sourceId }) {
     };
 }
 
+// Best-effort video metadata from Supadata's /v1/youtube/video endpoint
+// (title, duration — 1 extra credit). The transcript is the whole point
+// of this provider, so metadata failures never fail the acquisition:
+// this returns null when metadata is unavailable, and getTranscript
+// returns the transcript alone.
+async function fetchVideoMetadata(video, apiKey, getFn, deadlineMs) {
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), deadlineMs) : null;
+    try {
+        const params = new URLSearchParams({ id: video.canonicalUrl });
+        const reply = await getFn(
+            `${SUPADATA_API_BASE}/youtube/video?${params}`,
+            apiKey,
+            controller ? controller.signal : undefined
+        );
+        if (reply.failure) return null;
+        const { status, body } = reply;
+        if (status < 200 || status >= 300 || !isPlainObject(body)) return null;
+        const title = typeof body.title === "string" && body.title.trim().length > 0
+            ? body.title.slice(0, 300)
+            : null;
+        const duration = typeof body.duration === "number" ? body.duration
+            : typeof body.duration === "string" && /^\d+$/.test(body.duration.trim())
+                ? Number(body.duration.trim())
+                : null;
+        const durationSeconds = Number.isInteger(duration) && duration >= 0 ? duration : null;
+        if (!title && durationSeconds === null) return null;
+        return {
+            ...(title ? { videoTitle: title } : {}),
+            ...(durationSeconds !== null ? { videoDurationSeconds: durationSeconds } : {})
+        };
+    } catch {
+        return null;   // metadata is best-effort; never fail the transcript over it
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+}
+
 /**
  * Factory so tests can inject fetch, the credential store, and time.
  * @param {object} deps
@@ -218,18 +256,32 @@ export function createSupadataProvider({ fetchImpl, credentials, sleep, now, req
                 const jobId = body.jobId.slice(0, 200);
                 const job = await pollJob(jobId, apiKey, controller ? controller.signal : undefined, startedAt);
                 if (!job.done) return job;
-                return normalizeTranscriptBody(job.done, { mode, sourceId: jobId });
+                return withVideoMetadata(video, apiKey,
+                    normalizeTranscriptBody(job.done, { mode, sourceId: jobId }));
             }
-            return normalizeTranscriptBody(body, { mode, sourceId: null });
+            return withVideoMetadata(video, apiKey,
+                normalizeTranscriptBody(body, { mode, sourceId: null }));
         } finally {
             if (timer) clearTimeout(timer);
         }
     }
 
+    // Attach best-effort video metadata (title, duration) to a successful
+    // transcript result, so the app can populate the video fields. The
+    // transcript stands on its own when metadata is unavailable.
+    async function withVideoMetadata(video, apiKey, transcriptResult) {
+        if (!transcriptResult.success) return transcriptResult;
+        const metadata = await fetchVideoMetadata(video, apiKey, get, 8000);
+        return metadata ? { ...transcriptResult, ...metadata } : transcriptResult;
+    }
+
     return defineProvider({
         id: SUPADATA_ID,
         name: "Supadata",
-        description: "Hosted transcript API. Uses your own Supadata API key; requests go only to api.supadata.ai.",
+        description: "Hosted transcript API — transcripts are its whole purpose. Uses your own Supadata API key; " +
+            "requests go only to api.supadata.ai. Bypasses YouTube caption throttling via Supadata's own service. " +
+            "A successful fetch also pulls the video's title and duration (1 extra credit) to fill in the video fields. " +
+            "Free tier: 100 credits/month (1 credit per native transcript; pricing can change).",
         status: PROVIDER_STATUS.AVAILABLE,
         enabled: true,
         capabilities: {
