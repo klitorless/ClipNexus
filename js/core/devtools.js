@@ -29,6 +29,7 @@ import { addProviderTests } from "./devtools-provider-tests.js";
 import { addSupadataTests } from "./devtools-supadata-tests.js";
 import { addYouTubeNativeTests } from "./devtools-youtube-native-tests.js";
 import { addAnalysisTests } from "./devtools-analysis-tests.js";
+import { addDetectorTests } from "./devtools-detector-tests.js";
 import { addChunkingTests } from "./devtools-chunking-tests.js";
 import { addAnalyzerIntegrationTests } from "./devtools-analyzer-tests.js";
 import { addStage4Tests } from "./devtools-stage4-tests.js";
@@ -186,6 +187,10 @@ function buildTests(appState) {
 
     // Stage 3: analysis contracts (interface only — no AI integration).
     addAnalysisTests(add);
+
+    // Deterministic detector layer: hype, question, keyword,
+    // reaction, emphasis, phrase → analyzer-seam extractor.
+    addDetectorTests(add);
 
     // Stage 2C: deterministic chunking + export.
     addChunkingTests(add);

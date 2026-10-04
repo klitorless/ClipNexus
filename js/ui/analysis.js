@@ -89,19 +89,29 @@ function createStatusCard(analysis) {
 
 // Every evidence item is shown with its traceability: type,
 // provenance, reliability, transcript id, and segment ids.
-// Analysis is never displayed as anonymous detached text.
+// Detector evidence additionally shows which detector fired,
+// its score, and the matched signals — the explainability the
+// detector layer guarantees. Analysis is never displayed as
+// anonymous detached text.
 function createEvidenceCard(evidence, index) {
     const card = createElement("article", "card");
     card.dataset.section = "evidence";
     card.append(createElement("span", "tag", "Evidence"));
     card.append(createElement("h2", "card-title", `Evidence ${index + 1}`));
-    card.append(createDetailList([
+    const details = [
         ["Type", evidence.type],
         ["Provenance", evidence.provenance],
         ["Reliability", evidence.reliability],
         ["Transcript", evidence.sourceRef.transcriptId],
         ["Segments", evidence.sourceRef.segmentIds.join(", ")]
-    ]));
+    ];
+    const content = evidence.content || {};
+    if (typeof content.detector === "string") {
+        details.push(["Detector", content.detector]);
+        details.push(["Score", String(content.score)]);
+        details.push(["Signals", (content.signals || []).join("; ")]);
+    }
+    card.append(createDetailList(details));
     const quote = evidence.content && evidence.content.quote !== undefined
         ? String(evidence.content.quote)
         : JSON.stringify(evidence.content);

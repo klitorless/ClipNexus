@@ -50,7 +50,7 @@ import { downloadTextFile } from "./ui/download.js";
 import { createInfoCard } from "./ui/dom.js";
 import { createAnalyzer } from "./analysis/analyzer.js";
 import { createAnalysisRequest } from "./analysis/contracts.js";
-import { createQuestionExtractor } from "./analysis/deterministic-extractor.js";
+import { createDetectorExtractor } from "./analysis/detectors/extractor.js";
 import { createPlayerCoordinator } from "./video/player/coordinator.js";
 import { youtubePlayerDriver } from "./video/player/drivers/youtube.js";
 import { renderClipsView } from "./ui/clips.js";
@@ -589,11 +589,13 @@ function handleExportTranscript() {
 
 // ---------- Analysis ----------
 
-// Stage 4: the analyzer runs behind its extraction seam with a
-// deterministic, rule-based extractor. No AI, no network, no
-// ranking — an integration probe that proves scoped transcript
-// material reaches the extractor and evidence stays traceable.
-const analyzer = createAnalyzer({ extract: createQuestionExtractor() });
+// The analyzer runs behind its extraction seam with the
+// deterministic detector suite (hype, question, keyword,
+// reaction, emphasis, phrase). No AI, no network, no
+// ranking — detectors produce explainable signals as
+// Stage 3 evidence; reconciliation into POIs/events happens
+// in the existing downstream architecture.
+const analyzer = createAnalyzer({ extract: createDetectorExtractor() });
 
 function getAnalysis() {
     const ui = state.get("ui");

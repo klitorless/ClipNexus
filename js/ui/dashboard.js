@@ -147,7 +147,7 @@ function createNextActionsCard(project) {
         if (project.pois.length === 0) {
             actions.push({
                 link: "#analysis", text: "Run analysis",
-                hint: "Surface question patterns with traceable evidence."
+                hint: "Surface hype, questions, keywords and more with traceable evidence."
             });
         }
         if (undecided > 0) {
