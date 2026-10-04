@@ -36,8 +36,8 @@ function createStatusCard() {
             "no API key needed. If no captions come back, add the transcript yourself: upload " +
             "a file, or fetch it with a provider on the Transcripts page. Transcripts are parsed into " +
             "timestamped segments and validated: ordering, overlaps, and timing problems are " +
-            "reported instead of hidden. The Analysis tab surfaces question patterns with " +
-            "traceable evidence, and the Clip Queue pairs an embedded video player with clip " +
+            "reported instead of hidden. The Analysis tab runs deterministic transcript detectors " +
+            "and surfaces traceable evidence, and the Clip Queue pairs an embedded video player with clip " +
             "candidates you can seek through, Keep, or Reject."
         ),
         createElement(

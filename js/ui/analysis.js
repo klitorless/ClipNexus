@@ -34,8 +34,9 @@ function createScopeCard(transcript, onAnalyze) {
     card.dataset.section = "analysis-scope";
     card.append(createElement("h2", "card-title", "Run analysis"));
     card.append(createElement("p", "card-body",
-        "Runs the analyzer with the deterministic question-pattern extractor " +
-        "(segments containing \"?\"). Results are traceable to transcript and segment ids."));
+        "Runs the analyzer with the deterministic transcript detectors " +
+        "(hype, questions, keywords, reactions, emphasis, and phrases). " +
+        "Results are traceable to transcript and segment ids."));
 
     const chunks = Array.isArray(transcript.chunks) ? transcript.chunks : [];
 
