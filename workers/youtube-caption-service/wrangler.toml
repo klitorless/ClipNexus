@@ -47,4 +47,4 @@ dead_letter_queue = "clipnexus-caption-jobs-dlq"
 
 [[kv_namespaces]]
 binding = "JOB_STORE"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "95e76412e160465198123db1b7d39129"
